@@ -1,0 +1,27 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ImportGroup Label="PropertySheets" />
+  <PropertyGroup Label="UserMacros">
+    <acl>G:\fork\acl-dev\acl</acl>
+    <http_rpc>G:\fork\acl-dev\microservice\http_rpc</http_rpc>
+  </PropertyGroup>
+  <PropertyGroup />
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(ProjectDir)include;$(acl)\lib_acl_cpp\include;$(acl)\lib_acl\include;$(acl)\lib_protocol\include;$(http_rpc)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+    </ClCompile>
+    <Link>
+      <AdditionalLibraryDirectories>$(acl)\lib_acl_cpp;$(acl)\lib_acl;$(acl)\lib_protocol;$(http_rpc)\x64\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>lib_acl_cpp_vc2015d.lib;lib_acl_vc2015d.lib;lib_protocol_vc2015d.lib;http_rpc.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <BuildMacro Include="acl">
+      <Value>$(acl)</Value>
+    </BuildMacro>
+    <BuildMacro Include="http_rpc">
+      <Value>$(http_rpc)</Value>
+    </BuildMacro>
+  </ItemGroup>
+</Project>

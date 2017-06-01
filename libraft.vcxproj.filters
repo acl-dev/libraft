@@ -18,8 +18,25 @@
     <ClInclude Include="include\raft.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="include\server.hpp">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="include\service.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
     <ClInclude Include="include\node.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="include\peer.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="include\log.hpp">
+      <Filter>头文件</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\raft.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

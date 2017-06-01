@@ -34,3 +34,7 @@
 *.opendb
 *.db
 
+x64/
+Debug/
+*.VC.db
+*.users

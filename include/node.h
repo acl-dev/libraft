@@ -8,8 +8,8 @@ namespace raft
 		{
 
 		}
-
 	private:
-
+		acl::locker locker_;
+		std::string id_;
 	};
 }
