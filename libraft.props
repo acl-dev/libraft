@@ -2,13 +2,14 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ImportGroup Label="PropertySheets" />
   <PropertyGroup Label="UserMacros">
-    <acl>G:\fork\acl-dev\acl</acl>
-    <http_rpc>G:\fork\acl-dev\microservice\http_rpc</http_rpc>
+    <acl>F:\fork\acl-dev\acl</acl>
+    <http_rpc>F:\fork\acl-dev\microservice\http_rpc</http_rpc>
+    <protobuf>F:\fork\acl-dev\protobuf</protobuf>
   </PropertyGroup>
   <PropertyGroup />
   <ItemDefinitionGroup>
     <ClCompile>
-      <AdditionalIncludeDirectories>$(ProjectDir)include;$(acl)\lib_acl_cpp\include;$(acl)\lib_acl\include;$(acl)\lib_protocol\include;$(http_rpc)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)include;$(acl)\lib_acl_cpp\include;$(acl)\lib_acl\include;$(acl)\lib_protocol\include;$(http_rpc)\include;$(protobuf)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
     </ClCompile>
     <Link>
@@ -22,6 +23,9 @@
     </BuildMacro>
     <BuildMacro Include="http_rpc">
       <Value>$(http_rpc)</Value>
+    </BuildMacro>
+    <BuildMacro Include="protobuf">
+      <Value>$(protobuf)</Value>
     </BuildMacro>
   </ItemGroup>
 </Project>

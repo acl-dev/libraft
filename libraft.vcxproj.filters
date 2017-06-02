@@ -13,6 +13,12 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="头文件\proto_gen">
+      <UniqueIdentifier>{5fc7ab47-eba6-4b75-87e0-0b7a13333280}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="源文件\proto_gen">
+      <UniqueIdentifier>{16197da4-0a80-49d6-93c0-7efd2cc762f6}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\raft.hpp">
@@ -33,10 +39,22 @@
     <ClInclude Include="include\log.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="include\proto_gen\raft.pb.h">
+      <Filter>头文件\proto_gen</Filter>
+    </ClInclude>
+    <ClInclude Include="include\common.hpp">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="include\mmap_log.hpp">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\raft.cpp">
       <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="src\proto_gen\raft.pb.cc">
+      <Filter>源文件\proto_gen</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

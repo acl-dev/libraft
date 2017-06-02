@@ -111,14 +111,18 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="include\common.hpp" />
     <ClInclude Include="include\log.hpp" />
+    <ClInclude Include="include\mmap_log.hpp" />
     <ClInclude Include="include\node.h" />
     <ClInclude Include="include\peer.h" />
+    <ClInclude Include="include\proto_gen\raft.pb.h" />
     <ClInclude Include="include\service.h" />
     <ClInclude Include="include\raft.hpp" />
     <ClInclude Include="include\server.hpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\proto_gen\raft.pb.cc" />
     <ClCompile Include="src\raft.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
