@@ -5,6 +5,8 @@ VisualStudioVersion = 14.0.25420.1
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libraft", "libraft.vcxproj", "{0DECFC8A-BBD8-46ED-8AEC-96543D292E18}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mmlog_test", "tests\mmlog_test\mmlog_test.vcxproj", "{23308DF5-94B1-48DB-9E45-EF232E3D0B8F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -21,6 +23,14 @@ Global
 		{0DECFC8A-BBD8-46ED-8AEC-96543D292E18}.Release|x64.Build.0 = Release|x64
 		{0DECFC8A-BBD8-46ED-8AEC-96543D292E18}.Release|x86.ActiveCfg = Release|Win32
 		{0DECFC8A-BBD8-46ED-8AEC-96543D292E18}.Release|x86.Build.0 = Release|Win32
+		{23308DF5-94B1-48DB-9E45-EF232E3D0B8F}.Debug|x64.ActiveCfg = Debug|x64
+		{23308DF5-94B1-48DB-9E45-EF232E3D0B8F}.Debug|x64.Build.0 = Debug|x64
+		{23308DF5-94B1-48DB-9E45-EF232E3D0B8F}.Debug|x86.ActiveCfg = Debug|Win32
+		{23308DF5-94B1-48DB-9E45-EF232E3D0B8F}.Debug|x86.Build.0 = Debug|Win32
+		{23308DF5-94B1-48DB-9E45-EF232E3D0B8F}.Release|x64.ActiveCfg = Release|x64
+		{23308DF5-94B1-48DB-9E45-EF232E3D0B8F}.Release|x64.Build.0 = Release|x64
+		{23308DF5-94B1-48DB-9E45-EF232E3D0B8F}.Release|x86.ActiveCfg = Release|Win32
+		{23308DF5-94B1-48DB-9E45-EF232E3D0B8F}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -53,7 +53,7 @@ namespace raft
 
 			timespec times;
 			times.tv_sec = timeout_millis / 1000;
-			times.tv_nsec = (timeout_millis - times.tv_sec*1000) * 1000;
+			times.tv_nsec = (timeout_millis - (long)times.tv_sec*1000) * 1000;
 
 			acl_pthread_mutex_lock(waiter->mutex_);
 

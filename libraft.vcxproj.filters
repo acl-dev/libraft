@@ -48,6 +48,9 @@
     <ClInclude Include="include\mmap_log.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="include\log_manager.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\raft.cpp">

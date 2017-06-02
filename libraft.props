@@ -2,22 +2,27 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ImportGroup Label="PropertySheets" />
   <PropertyGroup Label="UserMacros">
-    <acl>F:\fork\acl-dev\acl</acl>
-    <http_rpc>F:\fork\acl-dev\microservice\http_rpc</http_rpc>
-    <protobuf>F:\fork\acl-dev\protobuf</protobuf>
+    <acl-dev>G:\fork\acl-dev</acl-dev>
+    <acl>$(acl-dev)\acl</acl>
+    <http_rpc>$(acl-dev)\microservice\http_rpc</http_rpc>
+    <protobuf>$(acl-dev)\protobuf</protobuf>
+    <libraft>$(acl-dev)\libraft\</libraft>
   </PropertyGroup>
   <PropertyGroup />
   <ItemDefinitionGroup>
     <ClCompile>
-      <AdditionalIncludeDirectories>$(ProjectDir)include;$(acl)\lib_acl_cpp\include;$(acl)\lib_acl\include;$(acl)\lib_protocol\include;$(http_rpc)\include;$(protobuf)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(libraft)include;$(libraft)include\proto_gen;$(acl)\lib_acl_cpp\include;$(acl)\lib_acl\include;$(acl)\lib_protocol\include;$(http_rpc)\include;$(protobuf)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
     </ClCompile>
     <Link>
-      <AdditionalLibraryDirectories>$(acl)\lib_acl_cpp;$(acl)\lib_acl;$(acl)\lib_protocol;$(http_rpc)\x64\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>lib_acl_cpp_vc2015d.lib;lib_acl_vc2015d.lib;lib_protocol_vc2015d.lib;http_rpc.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(acl)\lib_acl_cpp;$(acl)\lib_acl;$(acl)\lib_protocol;$(http_rpc)\x64\Debug;$(protobuf)\cmake\build\solution\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>lib_acl_cpp_vc2015d.lib;lib_acl_vc2015d.lib;lib_protocol_vc2015d.lib;http_rpc.lib;libprotobufd.lib;libprotobuf-lited.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <BuildMacro Include="acl-dev">
+      <Value>$(acl-dev)</Value>
+    </BuildMacro>
     <BuildMacro Include="acl">
       <Value>$(acl)</Value>
     </BuildMacro>
@@ -26,6 +31,9 @@
     </BuildMacro>
     <BuildMacro Include="protobuf">
       <Value>$(protobuf)</Value>
+    </BuildMacro>
+    <BuildMacro Include="libraft">
+      <Value>$(libraft)</Value>
     </BuildMacro>
   </ItemGroup>
 </Project>

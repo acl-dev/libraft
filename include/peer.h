@@ -1,7 +1,10 @@
 #pragma once
 namespace raft
 {
-	class peer : public acl::thread
+	class node;
+
+	class peer
+		:public acl::thread
 	{
 	public:
 		peer(node &_node)

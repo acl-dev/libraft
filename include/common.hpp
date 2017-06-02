@@ -4,11 +4,6 @@ namespace raft
 	typedef unsigned long long log_entry_index_t;
 	typedef unsigned long long term_t;
 
-
-
-	///
-
-
 	inline size_t get_sizeof(int)
 	{
 		return sizeof(int);
@@ -17,7 +12,8 @@ namespace raft
 
 	inline size_t get_sizeof(const google::protobuf::Message &entry)
 	{
-		return entry.ByteSizeLong();
+		//sizeof(int) for len.see put_message
+		return entry.ByteSizeLong() + sizeof(int);
 	}
 
 	////
@@ -124,7 +120,7 @@ namespace raft
 		unsigned int len = get_uint32(buffer_);
 		std::string result((char*)buffer_, len);
 		buffer_ += len;
-		return std::move(result);
+		return result;
 	}
 
 
@@ -132,7 +128,7 @@ namespace raft
 	{
 		size_t len = get_sizeof(msg);
 		put_uint32(buffer_, (unsigned int)len);
-		acl_assert(msg.SerializeToArray(buffer_, len));
+		acl_assert(msg.SerializeToArray(buffer_, (int)len));
 		buffer_ += len;
 	}
 	
