@@ -1,4 +1,13 @@
 #include "raft.hpp"
+
+#ifndef __10MB__ 
+#define __10MB__ 10*1024*1024
+#endif
+
+#ifndef __10000__ 
+#define __10000__ 10000
+#endif
+
 namespace raft
 {
 	replicate_waiter_t::replicate_waiter_t()
@@ -23,21 +32,29 @@ namespace raft
 
 	}
 
-	raft::result_t node::
-		replicate(const std::string &data, int timeout_millis)
+	bool node::is_leader()
 	{
-		result_t result;
+		acl::lock_guard lg(metadata_locker_);
+		return role_ == E_LEADER;
+	}
+
+	std::pair<status_t, version>
+	node::replicate(const std::string &data, int timeout_millis)
+	{
+		status_t result;
 		log_index_t index = 0;
 		int rc = 0;
+		replicate_waiter_t *waiter = new replicate_waiter_t;
 
 		if (!write_log(data, index))
 		{
 			logger_fatal("write_log error");
-			return E_UNKNOWN;
+			delete waiter;
+			return{ E_UNKNOWN, { 0, 0}};
 		}
 
-		replicate_waiter_t *waiter = new replicate_waiter_t;
-		add_waiter(index, waiter);
+		waiter->log_index_ = index;
+		add_waiter(waiter);
 
 		notify_peers_replicate_log();
 
@@ -57,17 +74,23 @@ namespace raft
 		}
 		else if (errno == ETIMEDOUT)
 		{
-			result = result_t::E_TIMEOUT;
+			result = status_t::E_TIMEOUT;
 		}
 		else
 		{
-			result = result_t::E_UNKNOWN;
+			result = status_t::E_UNKNOWN;
 		}
 		acl_pthread_mutex_unlock(waiter->mutex_);
 
 		delete waiter;
 
-		return result;
+		return{ result, {waiter->log_index_ ,get_current_term() } };
+	}
+
+	bool node::is_candicate()
+	{
+		acl::lock_guard lg(metadata_locker_);
+		return role_ == E_CANDIDATE;
 	}
 
 	raft::log_index_t node::get_last_log_index()
@@ -90,16 +113,27 @@ namespace raft
 
 	bool node::build_replicate_log_request(
 		replicate_log_entries_request &requst, 
-		log_index_t index)
+		log_index_t index ,
+		int entry_size)
 	{
 		requst.set_leader_id(raft_id_);
 		requst.set_leader_commit(committed_index_);
 
-		if (index <= last_log_index())
+		if (!entry_size)
+			entry_size = __10000__;
+
+		//log empty 
+		if (last_log_index() == 0)
+		{
+			requst.set_prev_log_index(0);
+			requst.set_prev_log_term(0);
+			return true;
+		}
+		else if (index <= last_log_index())
 		{
 			std::vector<log_entry> entries;
 			//index -1 for prev_log_term, set_prev_log_index
-			if (log_.read(index - 1, __10M__, __100__, entries))
+			if (log_.read(index - 1, __10MB__, entry_size, entries))
 			{
 				requst.set_prev_log_index(entries[0].index());
 				requst.set_prev_log_term(entries[0].index());
@@ -115,6 +149,7 @@ namespace raft
 		}
 		else
 		{
+			/*peer match leader now .and just make heartbeat req*/
 			log_entry entry;
 			/*index -1 for prev_log_term, prev_log_index */
 			if (log_.read(index - 1, entry))
@@ -137,7 +172,7 @@ namespace raft
 
 	bool node::build_vote_request(vote_request &req)
 	{
-
+		return false;
 	}
 
 	void node::vote_response_callback(const vote_response &response)
@@ -145,14 +180,15 @@ namespace raft
 
 	}
 
-	void node::new_term_callback(term_t term)
+	void node::handle_new_term_callback(term_t term)
 	{
+		logger("receive new term.%d",term);
 
 	}
 
 	bool node::get_snapshot(std::string &path)
 	{
-
+		return false;
 	}
 
 	void node::notify_peers_replicate_log()
@@ -176,21 +212,21 @@ namespace raft
 		const replicate_log_entries_request &req, 
 		replicate_log_entries_response &resp)
 	{
-
+		return false;
 	}
 
 	bool node::handle_install_snapshot_requst(
 		const install_snapshot_request &req, 
 		install_snapshot_response &resp)
 	{
-
+		return false;
 	}
 
-	void node::add_waiter(log_index_t id, replicate_waiter_t *waiter)
+	void node::add_waiter(replicate_waiter_t *waiter)
 	{
-		replicate_waiters_locker_.lock();
-		replicate_waiters_.insert(std::make_pair(id, waiter));
-		replicate_waiters_locker_.unlock();
+		acl::lock_guard lg(waiters_locker_);
+		replicate_waiters_.insert(
+			std::make_pair(waiter->log_index_, waiter));
 	}
 
 	void node::make_log_entry(const std::string &data, log_entry &entry)
@@ -223,7 +259,7 @@ namespace raft
 
 	void node::signal_waiter()
 	{
-		acl::lock_guard lg(replicate_waiters_locker_);
+		acl::lock_guard lg(waiters_locker_);
 
 		std::map<log_index_t, replicate_waiter_t*>::iterator
 			it = replicate_waiters_.begin();
@@ -236,7 +272,7 @@ namespace raft
 			replicate_waiter_t *waiter = it->second;
 
 			acl_pthread_mutex_lock(waiter->mutex_);
-			it->second->result_ = result_t::E_OK;
+			it->second->result_ = status_t::E_OK;
 			acl_pthread_cond_signal(waiter->cond_);
 			acl_pthread_mutex_unlock(waiter->mutex_);
 
@@ -251,7 +287,7 @@ namespace raft
 
 	bool node::do_commit()
 	{
-
+		return false;
 	}
 
 	

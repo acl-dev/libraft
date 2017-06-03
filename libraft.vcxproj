@@ -121,12 +121,14 @@
     <ClInclude Include="include\node_service.h" />
     <ClInclude Include="include\raft.hpp" />
     <ClInclude Include="include\server.hpp" />
+    <ClInclude Include="include\snapshot.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\node.cpp" />
     <ClCompile Include="src\peer.cpp" />
     <ClCompile Include="src\proto_gen\raft.pb.cc" />
     <ClCompile Include="src\raft.cpp" />
+    <ClCompile Include="src\snapshot.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

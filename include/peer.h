@@ -6,31 +6,30 @@ namespace raft
 	class peer :public acl::thread
 	{
 	public:
-		enum status_t
-		{
-			E_IDLE,//idle
-			E_REPLICATING,//replicating
-			E_VOTING, //voting,
-			E_SLEEPING,//sleep
-		};
 		peer(node &_node);
-		bool notify_repliate();
-		bool notify_vote();
+
+		void notify_repliate();
+		
+		void notify_vote();
+
 	private:
 		bool check_heartbeart();
 
 		bool check_do_replicate();
 		void do_replicate();
 
+		bool do_install_snapshot();
+
 		bool check_do_vote();
 		void do_vote();
 
-		virtual void* run();
+		void to_sleep();
 
+		virtual void* run();
 
 		node		&node_;
 		acl::locker locker_;
-		status_t	status_;
+
 		log_index_t match_index_;
 		log_index_t next_index_;
 
@@ -43,6 +42,12 @@ namespace raft
 
 		timeval last_replicate_time_;
 
-		size_t heart_inter_;
+		long long heart_inter_;
+
+		std::string replicate_service_path_;
+
+		acl::http_rpc_client *rpc_client_;
+
+		size_t rpc_faileds_;
 	};
 }

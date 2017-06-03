@@ -140,4 +140,34 @@ namespace raft
 		return rc;
 	}
 
+	//helper function for write read snapshot
+
+	bool write(acl::ofstream &file, const std::string &data)
+	{
+		unsigned char len[sizeof(int)];
+		unsigned char *plen = len;
+
+		put_uint32(plen, (unsigned int)data.size());
+		if (file.write(len, sizeof(int)) != sizeof(int))
+			return false;
+		if (file.write(data.c_str(), data.size()) != (int)data.size())
+			return false;
+		return true;
+	}
+
+	bool read(acl::ifstream &file, std::string &buffer)
+	{
+		unsigned char len[sizeof(int)];
+		unsigned char *plen = len;
+		
+		if (file.read(len, sizeof(int)) != sizeof(int))
+			return false;
+
+		unsigned int size = get_uint32(plen);
+		if (size == 0)
+			return true;
+
+		buffer.resize(size);
+		return  file.read((char*)buffer.data(), size) == size;
+	}
 }

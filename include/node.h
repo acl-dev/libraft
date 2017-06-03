@@ -1,10 +1,7 @@
 #pragma once
 namespace raft
 {
-#define __10M__ 10*1024*1024
-#define __100__ 100
-
-	enum result_t
+	enum status_t
 	{
 		E_OK,
 		E_NO_LEADER,
@@ -12,12 +9,18 @@ namespace raft
 		E_UNKNOWN,
 	};
 
+	struct version 
+	{
+		log_index_t index_;
+		term_t term_;
+	};
+
 	struct replicate_waiter_t
 	{
 		acl_pthread_cond_t *cond_;
 		acl_pthread_mutex_t *mutex_;
-		result_t result_;
-		log_index_t id_;
+		status_t result_;
+		log_index_t log_index_;
 
 		replicate_waiter_t();
 		~replicate_waiter_t();
@@ -26,13 +29,28 @@ namespace raft
 	class node
 	{
 	public:
+		
 		node();
-		result_t replicate(const std::string &data, int timeout_millis);
+		
+		std::pair<status_t, version>
+			replicate(const std::string &data, int timeout_millis);
+		
+		bool is_leader();
+
 	private:
+		enum role
+		{
+			E_LEADER,//leader
+			E_FOLLOWER,//follower
+			E_CANDIDATE//Candidate
+		};
+
 		friend class peer;
 
 
 		//for peer
+		bool is_candicate();
+
 		log_index_t get_last_log_index();
 
 		term_t get_current_term();
@@ -41,7 +59,8 @@ namespace raft
 
 		bool build_replicate_log_request(
 			replicate_log_entries_request &requst, 
-			log_index_t index);
+			log_index_t index,
+			int entry_size = 0);
 
 		void replicate_log_callback();
 
@@ -49,7 +68,7 @@ namespace raft
 
 		void vote_response_callback(const vote_response &response);
 
-		void new_term_callback(term_t term);
+		void handle_new_term_callback(term_t term);
 
 		bool get_snapshot(std::string &path);
 		//
@@ -66,7 +85,7 @@ namespace raft
 			const install_snapshot_request &req, 
 			install_snapshot_response &resp);
 
-		void add_waiter(log_index_t id, replicate_waiter_t *waiter);
+		void add_waiter(replicate_waiter_t *waiter);
 
 		void make_log_entry(const std::string &data, log_entry &entry);
 		bool write_log(const std::string &data, log_index_t &index);
@@ -85,11 +104,13 @@ namespace raft
 
 
 		std::map<log_index_t, replicate_waiter_t*>  replicate_waiters_;
-		acl::locker replicate_waiters_locker_;
+		acl::locker waiters_locker_;
 
 		std::string raft_id_;
 
 		std::map<std::string, peer*> peers_;
 		acl::locker peers_locker_;
+
+		role role_;
 	};
 }

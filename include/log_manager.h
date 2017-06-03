@@ -48,7 +48,7 @@ namespace raft
 				if (!log_->read(
 					index,
 					max_bytes - bytes, 
-					max_count - entries.size(), 
+					max_count - (int)entries.size(), 
 					entries, 
 					bytes))
 				{
@@ -102,7 +102,7 @@ namespace raft
 			if (!current_wlog_)
 			{
 				logger_error("create log error");
-				return false
+				return false;
 			}
 				
 			if (!current_wlog_->write(entry))
@@ -114,7 +114,7 @@ namespace raft
 				return false;
 			}
 			log_index_t index = current_wlog_->start_index();
-			logs_.insert(index, current_wlog_);
+			logs_.insert(std::make_pair(index, current_wlog_));
 			return true;
 		}
 		void reload_log()
