@@ -123,6 +123,8 @@
     <ClInclude Include="include\server.hpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\node.cpp" />
+    <ClCompile Include="src\peer.cpp" />
     <ClCompile Include="src\proto_gen\raft.pb.cc" />
     <ClCompile Include="src\raft.cpp" />
   </ItemGroup>

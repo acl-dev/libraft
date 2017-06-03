@@ -59,5 +59,11 @@
     <ClCompile Include="src\proto_gen\raft.pb.cc">
       <Filter>源文件\proto_gen</Filter>
     </ClCompile>
+    <ClCompile Include="src\peer.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="src\node.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

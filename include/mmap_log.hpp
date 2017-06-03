@@ -253,7 +253,6 @@ namespace raft
 				logger_error("index error,%d",index);
 				return false;
 			}
-				
 
 			acl_assert(!acl_pthread_rwlock_rdlock(&rwlocker_));
 
@@ -268,7 +267,8 @@ namespace raft
 			{
 				log_entry entry;
 
-				if(buffer - data_buf_ >= max_data_size_ - one_index_size())
+				if(buffer - data_buf_ >= 
+					(int)(max_data_size_ - one_index_size()))
 					break;
 
 				if (!get_entry(buffer, entry))
@@ -358,7 +358,7 @@ namespace raft
 			acl_assert(offset < max_data_size_);
 			return data_buf_ + offset;
 		}
-		int max_index_size(int max_mmap_size)
+		size_t max_index_size(size_t max_mmap_size)
 		{
 			log_entry entry;
 			entry.set_index(-1);
@@ -370,9 +370,9 @@ namespace raft
 
 			size_t one_index_len = sizeof(long long) + sizeof(int) * 3;
 
-			int size = ((max_mmap_size / one_entry_len + 1)* one_index_len);
+			size_t size = ((max_mmap_size / one_entry_len + 1)* one_index_len);
 
-			int max_size = __64k__;
+			size_t max_size = __64k__;
 
 			while (max_size < size)
 			{
@@ -401,7 +401,7 @@ namespace raft
 
 				size_t max_size = max_index_size_ - sizeof(int);
 
-				while (index_wbuf_ - index_buf_ < max_size)
+				while (index_wbuf_ - index_buf_ < (int)max_size)
 				{
 					if (get_uint32(index_wbuf_) == __MAGIC_START__)
 					{
@@ -483,7 +483,7 @@ namespace raft
 			else if (!start_index_ || index == start_index_)
 				return index_buf_;
 
-			int offset = (index - start_index_) * one_index_size();
+			size_t offset = (index - start_index_) * one_index_size();
 
 			if (offset >= max_index_size_ - one_index_size())
 				return NULL;
@@ -566,5 +566,33 @@ namespace raft
 
 		unsigned char *index_buf_;
 		unsigned char *index_wbuf_;
+	};
+
+	class mmap_log_creater
+	{
+	public:
+		mmap_log_creater()
+		{
+
+		}
+		
+		static log *create(const std::string &filepath)
+		{
+			mmap_log *log = new mmap_log;
+
+			if (!log->open(filepath))
+			{
+				logger_error("log open error");
+				return NULL;
+			}
+				
+
+			return log;
+		}
+
+		static std::map<log_index_t, log*> reload(const std::string &path)
+		{
+			return {};
+		}
 	};
 }

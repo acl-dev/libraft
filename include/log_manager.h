@@ -95,7 +95,10 @@ namespace raft
 		bool create_log(const log_entry &entry)
 		{
 			//create new log 
-			current_wlog_ = CreateLogPolicy::create(path_);
+			std::string filepath(path_);
+
+			filepath += std::to_string(entry.index()) +  ".log";
+			current_wlog_ = CreateLogPolicy::create(filepath);
 			if (!current_wlog_)
 			{
 				logger_error("create log error");
@@ -104,7 +107,7 @@ namespace raft
 				
 			if (!current_wlog_->write(entry))
 			{
-				logger_error("wirte log error");
+				logger_error("write log error");
 				current_wlog_->close();
 				delete current_wlog_;
 				current_wlog_ = NULL;
