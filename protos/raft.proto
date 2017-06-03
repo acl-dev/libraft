@@ -56,6 +56,7 @@ message snapshot_info
 	fixed64 last_included_term = 2;
 }
 
+
 message install_snapshot_request
 {
 	uint64 req_id = 1;
