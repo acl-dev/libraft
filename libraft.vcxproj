@@ -118,7 +118,7 @@
     <ClInclude Include="include\node.h" />
     <ClInclude Include="include\peer.h" />
     <ClInclude Include="include\proto_gen\raft.pb.h" />
-    <ClInclude Include="include\service.h" />
+    <ClInclude Include="include\node_service.h" />
     <ClInclude Include="include\raft.hpp" />
     <ClInclude Include="include\server.hpp" />
   </ItemGroup>

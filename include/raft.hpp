@@ -5,8 +5,9 @@
 #include "common.hpp"
 #include "log.hpp"
 #include "mmap_log.hpp"
+#include "log_manager.h"
 #include "peer.h"
 #include "node.h"
-#include "service.h"
+#include "node_service.h"
 #include "server.hpp"
 

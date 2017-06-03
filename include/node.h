@@ -14,14 +14,15 @@ namespace raft
 		acl_pthread_cond_t *cond_;
 		acl_pthread_mutex_t *mutex_;
 		result_t result_;
-		log_entry_index_t id_;
+		log_index_t id_;
 
 		replicate_waiter_t()
 		{
 			acl_pthread_mutexattr_t attr;
 
 			cond_ = acl_thread_cond_create();
-			mutex_ = (acl_pthread_mutex_t*)acl_mymalloc(sizeof(acl_pthread_mutex_t));
+			mutex_ = (acl_pthread_mutex_t*)
+				acl_mymalloc(sizeof(acl_pthread_mutex_t));
 			acl_pthread_mutex_init(mutex_, &attr);
 
 		}
@@ -43,7 +44,7 @@ namespace raft
 		result_t replicate(const std::string &data, int timeout_millis)
 		{
 			result_t result;
-			log_entry_index_t id = 0;
+			log_index_t id = 0;
 			int rc = 0;
 
 			replicate_waiter_t *waiter = new replicate_waiter_t;
@@ -53,11 +54,15 @@ namespace raft
 
 			timespec times;
 			times.tv_sec = timeout_millis / 1000;
-			times.tv_nsec = (timeout_millis - (long)times.tv_sec*1000) * 1000;
+			times.tv_nsec = 
+				(timeout_millis - (long)times.tv_sec*1000) * 1000;
 
 			acl_pthread_mutex_lock(waiter->mutex_);
 
-			if (acl_pthread_cond_timedwait(waiter->cond_, waiter->mutex_, &times) == 0)
+			if (acl_pthread_cond_timedwait(
+				waiter->cond_, 
+				waiter->mutex_, 
+				&times) == 0)
 			{
 				result = waiter->result_;
 			}
@@ -80,22 +85,28 @@ namespace raft
 
 
 		//for peer
-		log_entry_index_t get_last_log_index()
+		log_index_t get_last_log_index()
 		{
-
+			acl::lock_guard lg(metadata_locker_);
+			return last_log_index_;
 		}
 
 		term_t get_current_term()
 		{
 
+			acl::lock_guard lg(metadata_locker_);
+			return current_term_;
+
 		}
 
-		bool build_replicate_log_entries_request(replicate_log_entries_request &requst, log_entry_index_t index)
+		bool build_replicate_log_request(
+			replicate_log_entries_request &requst, 
+			log_index_t index)
 		{
 
 		}
 
-		void replicate_log_entries_callback()
+		void replicate_log_callback()
 		{
 
 		}
@@ -127,34 +138,38 @@ namespace raft
 			return true;
 		}
 
-		bool handle_replicate_entries_request(const replicate_log_entries_request &req, replicate_log_entries_response &resp)
+		bool handle_replicate_log_request(
+			const replicate_log_entries_request &req, 
+			replicate_log_entries_response &resp)
 		{
 
 		}
 
-		bool handle_install_snapshot_requst(const install_snapshot_request &req, install_snapshot_response &resp)
+		bool handle_install_snapshot_requst(
+			const install_snapshot_request &req, 
+			install_snapshot_response &resp)
 		{
 
 		}
 
-		void add_waiter(log_entry_index_t id, replicate_waiter_t *waiter)
+		void add_waiter(log_index_t id, replicate_waiter_t *waiter)
 		{
 			replicate_waiters_locker_.lock();
 			replicate_waiters_.insert(std::make_pair(id, waiter));
 			replicate_waiters_locker_.unlock();
 		}
-		log_entry_index_t relicate_data(const std::string &data)
+		log_index_t relicate_data(const std::string &data)
 		{
-			last_log_entry_index_++;
+			last_log_index_++;
 			//...
-			return last_log_entry_index_;
+			return last_log_index_;
 		}
 
 		void signal_waiter()
 		{
 			acl::lock_guard lg(replicate_waiters_locker_);
 
-			std::map<log_entry_index_t, replicate_waiter_t*>::iterator
+			std::map<log_index_t, replicate_waiter_t*>::iterator
 				it = replicate_waiters_.begin();
 
 			
@@ -183,12 +198,13 @@ namespace raft
 		}
 
 
-		log_entry_index_t last_log_entry_index_;
-		log_entry_index_t committed_index_;
+		log_index_t last_log_index_;
+		log_index_t committed_index_;
+		term_t			  current_term_;
 		acl::locker		  metadata_locker_;
 
 
-		std::map<log_entry_index_t, replicate_waiter_t*>  replicate_waiters_;
+		std::map<log_index_t, replicate_waiter_t*>  replicate_waiters_;
 		acl::locker replicate_waiters_locker_;
 
 		std::string id_;

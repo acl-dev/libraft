@@ -11,7 +11,7 @@ namespace raft
 
 		void new_raft_node(const std::string &raft_id)
 		{
-			regist_service<service>();
+			regist_service<node_service>();
 		}
 	};
 }

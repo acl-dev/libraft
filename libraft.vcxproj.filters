@@ -27,9 +27,6 @@
     <ClInclude Include="include\server.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="include\service.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="include\node.h">
       <Filter>头文件</Filter>
     </ClInclude>
@@ -49,6 +46,9 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="include\log_manager.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="include\node_service.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

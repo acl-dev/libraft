@@ -3,8 +3,7 @@ namespace raft
 {
 	class node;
 
-	class peer
-		:public acl::thread
+	class peer :public acl::thread
 	{
 	public:
 		peer(node &_node)
@@ -22,7 +21,7 @@ namespace raft
 			} while (true);
 		}
 		node &node_;
-		log_entry_index_t match_index_;
-		log_entry_index_t next_index_;
+		log_index_t match_index_;
+		log_index_t next_index_;
 	};
 }

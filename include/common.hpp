@@ -1,7 +1,7 @@
 #pragma once
 namespace raft
 {
-	typedef unsigned long long log_entry_index_t;
+	typedef unsigned long long log_index_t;
 	typedef unsigned long long term_t;
 
 	inline size_t get_sizeof(int)
