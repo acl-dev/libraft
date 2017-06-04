@@ -7,6 +7,7 @@
 #include "mmap_log.hpp"
 #include "log_manager.h"
 #include "snapshot.h"
+#include "log_compaction_worker.h"
 #include "peer.h"
 #include "node.h"
 #include "node_service.h"

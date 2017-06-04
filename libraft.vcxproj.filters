@@ -54,6 +54,9 @@
     <ClInclude Include="include\snapshot.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="include\log_compaction_worker.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\raft.cpp">
@@ -69,6 +72,15 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="src\snapshot.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="src\log_manager.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="src\mmap_log.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="src\log_compaction_worker.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

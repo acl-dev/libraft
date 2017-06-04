@@ -3,14 +3,16 @@ namespace raft
 {
 	const static std::string g_magic_string("raft-snapshot-head");
 
-	
-
 	struct snapshot_callback
 	{
-		virtual bool make_snapshot(acl::ofstream &file) = 0;
+		virtual bool receive_snapshot_callback(
+			const std::string &filepath) = 0;
+
+		virtual bool make_snapshot_callback(const std::string &path, 
+			std::string &filename) = 0;
 	};
 
-	bool write_version(acl::ofstream &file, const version &ver);
+	bool write(acl::ofstream &file, const version &ver);
 	
-	bool read_version(acl::ifstream &file, version &ver);
+	bool read(acl::ifstream &file, version &ver);
 }

@@ -8,7 +8,7 @@ namespace raft
 		snapshot_info info_;
 	};
 
-	bool write_version(acl::ofstream &file, const version &ver)
+	bool write(acl::ofstream &file, const version &ver)
 	{
 		snapshot_head head;
 
@@ -26,7 +26,7 @@ namespace raft
 		return true;
 	}
 
-	bool read_version(acl::ifstream &file, version &ver)
+	bool read(acl::ifstream &file, version &ver)
 	{
 		std::string magic_string;
 		std::string buffer;
@@ -34,7 +34,7 @@ namespace raft
 
 		if (!read(file, magic_string) || magic_string != g_magic_string)
 		{
-			logger_error("read snapshot error,%s",
+			logger_error("read snapshot error,magic_string:%s",
 				magic_string.c_str());
 			return false;
 		}
