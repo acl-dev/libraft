@@ -151,11 +151,9 @@ namespace raft
 		bool write_log(const std::string &data, 
 			log_index_t &index);
 
-		void signal_replicate_waiter(log_index_t index);
+		void notify_replicate_conds(log_index_t index);
 
 		void init();
-
-		bool do_commit();
 
 		log_manager *log_manager_;
 
@@ -168,9 +166,9 @@ namespace raft
 		acl::locker	metadata_locker_;
 
 		typedef std::map<log_index_t, 
-			replicate_cond_t*> replicate_waiters_t;
+			replicate_cond_t*> replicate_conds_t;
 
-		replicate_waiters_t replicate_waiters_;
+		replicate_conds_t replicate_conds_;
 		acl::locker waiters_locker_;
 
 

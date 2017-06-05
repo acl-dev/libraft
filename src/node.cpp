@@ -305,7 +305,7 @@ namespace raft
 
 		update_committed_index(majority_index);
 
-		signal_replicate_waiter(majority_index);
+		notify_replicate_conds(majority_index);
 	}
 
 	void node::build_vote_request(vote_request &req)
@@ -441,7 +441,7 @@ namespace raft
 
 	bool node::should_compact_log()
 	{
-		if (log_manager_->log_count() <= max_log_count_ || 
+		if (log_manager_->log_count() <= max_log_count_ ||
 			check_compacting_log())
 			return false;
 
@@ -646,7 +646,7 @@ namespace raft
 
 		acl_pthread_mutex_lock(waiter->mutex_);
 		
-		waiter->it_ = replicate_waiters_.insert(
+		waiter->it_ = replicate_conds_.insert(
 			std::make_pair(waiter->log_index_, waiter)).first;
 		
 		acl_pthread_mutex_unlock(waiter->mutex_);
@@ -657,9 +657,9 @@ namespace raft
 
 		acl_pthread_mutex_lock(waiter->mutex_);
 
-		if(waiter->it_ != replicate_waiters_.end())
-			replicate_waiters_.erase(waiter->it_);
-		waiter->it_ = replicate_waiters_.end();
+		if(waiter->it_ != replicate_conds_.end())
+			replicate_conds_.erase(waiter->it_);
+		waiter->it_ = replicate_conds_.end();
 
 		acl_pthread_mutex_unlock(waiter->mutex_);
 	}
@@ -697,22 +697,22 @@ namespace raft
 		return true;
 	}
 
-	void node::signal_replicate_waiter(log_index_t index)
+	void node::notify_replicate_conds(log_index_t index)
 	{
 		acl::lock_guard lg(waiters_locker_);
 
 		std::map<log_index_t, replicate_cond_t*>::iterator
-			it = replicate_waiters_.begin();
+			it = replicate_conds_.begin();
 
 
-		for (; it != replicate_waiters_.end();)
+		for (; it != replicate_conds_.end();)
 		{
 			if (it->first > index)
 				break;
 
 			replicate_cond_t *waiter = it->second;
 			waiter->notify();
-			it = replicate_waiters_.erase(it);
+			it = replicate_conds_.erase(it);
 		}
 	}
 
@@ -720,12 +720,5 @@ namespace raft
 	{
 
 	}
-
-	bool node::do_commit()
-	{
-		return false;
-	}
-
-
 
 }
