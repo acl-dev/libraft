@@ -123,6 +123,7 @@
     <ClInclude Include="include\raft.hpp" />
     <ClInclude Include="include\server.hpp" />
     <ClInclude Include="include\snapshot.h" />
+    <ClInclude Include="include\vote_timer.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\log_manager.cpp" />

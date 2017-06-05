@@ -15,25 +15,15 @@ namespace raft
 		term_t term_;
 	};
 
-	struct replicate_waiter_t
-	{
-		acl_pthread_cond_t *cond_;
-		acl_pthread_mutex_t *mutex_;
-		status_t result_;
-		log_index_t log_index_;
-
-		replicate_waiter_t();
-		~replicate_waiter_t();
-	};
-
+	struct replicate_waiter_t;
 	class node
 	{
 	public:
 		
 		node();
 		
-		std::pair<status_t, version>
-			replicate(const std::string &data, int timeout_millis);
+		std::pair<status_t, version> replicate(
+			const std::string &data,int timeout_millis);
 		
 		bool is_leader();
 
@@ -52,11 +42,11 @@ namespace raft
 		std::string raft_id();
 
 	private:
-		enum role
+		enum role_t
 		{
 			E_LEADER,//leader
 			E_FOLLOWER,//follower
-			E_CANDIDATE//Candidate
+			E_CANDIDATE//candidate
 		};
 
 		friend class peer;
@@ -69,6 +59,10 @@ namespace raft
 
 		term_t current_term();
 		
+		role_t role();
+
+		void update_role(role_t _role);
+
 		log_index_t last_log_index();
 
 		bool build_replicate_log_request(
@@ -85,13 +79,14 @@ namespace raft
 		void vote_response_callback(const std::string &peer_id, 
 			const vote_response &response);
 
+		int peers_count();
+
 		void handle_new_term_callback(term_t term);
 
 		bool get_snapshot(std::string &path);
 		
 		// log compaction things
-		std::map<log_index_t, std::string> 
-			scan_snapshots();
+		std::map<log_index_t, std::string> scan_snapshots();
 
 		bool check_log_compaction();
 		
@@ -103,13 +98,20 @@ namespace raft
 
 		void do_compaction_log();
 		//
+
+		void become_leader();
+
 		void update_committed_index(log_index_t index);
+
+		void election_timer_callback();
 
 		log_index_t committed_index();
 
 		log_index_t start_log_index();
 
 		void notify_peers_replicate_log();
+
+		void update_peers_next_index();
 
 		bool handle_vote_request(
 			const vote_request &req, 
@@ -125,6 +127,8 @@ namespace raft
 
 		void add_waiter(replicate_waiter_t *waiter);
 
+		void remove_waiter(replicate_waiter_t *waiter);
+
 		void make_log_entry(const std::string &data, log_entry &entry);
 
 		bool write_log(const std::string &data, log_index_t &index);
@@ -132,14 +136,16 @@ namespace raft
 		void signal_replicate_waiter(log_index_t index);
 
 		void init();
+
 		bool do_commit();
 
 		log_manager *log_manager_;
 
 		log_index_t last_log_index_;
 		log_index_t committed_index_;
-		term_t			  current_term_;
-		acl::locker		  metadata_locker_;
+		term_t		current_term_;
+		role_t		role_;
+		acl::locker	metadata_locker_;
 
 
 		std::map<log_index_t, replicate_waiter_t*>  replicate_waiters_;
@@ -148,9 +154,9 @@ namespace raft
 		std::string raft_id_;
 
 		std::map<std::string, peer*> peers_;
+
 		acl::locker peers_locker_;
 
-		role role_;
 
 		snapshot_callback *snapshot_callback_;
 
@@ -167,5 +173,12 @@ namespace raft
 		bool making_snapshot_;
 
 		acl::locker making_snapshot_locker_;
+
+		//
+		std::map<std::string, vote_response> vote_responses_;
+		
+		acl::locker vote_responses_locker_;
+
+
 	};
 }

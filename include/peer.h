@@ -8,18 +8,15 @@ namespace raft
 	public:
 		peer(node &_node, const std::string &peer_id);
 
-		~peer()
-		{
-			if (!to_stop_)
-			{
-				notify_stop();
-			}
-		}
+		~peer();
+
 		void notify_repliate();
 		
 		void notify_vote();
 
 		log_index_t match_index();
+
+		void set_next_index(log_index_t index);
 	private:
 		void notify_stop();
 

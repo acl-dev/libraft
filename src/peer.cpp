@@ -35,7 +35,13 @@ namespace raft
 		acl_pthread_mutex_init(mutex_, &attr);
 		start();
 	}
-
+	peer::~peer()
+	{
+		if (!to_stop_)
+		{
+			notify_stop();
+		}
+	}
 	void peer::notify_repliate()
 	{
 		acl_pthread_mutex_lock(mutex_);
@@ -58,7 +64,11 @@ namespace raft
 		}
 		acl_pthread_mutex_unlock(mutex_);
 	}
-
+	void peer::set_next_index(log_index_t index)
+	{
+		acl::lock_guard lg(locker_);
+		next_index_ = index;
+	}
 	raft::log_index_t peer::match_index()
 	{
 		acl::lock_guard lg(locker_);
@@ -223,9 +233,7 @@ namespace raft
 			//nothings to replicate
 			if(next_index_ > node_.last_log_index())
 				break;
-
-		}
-		
+		}		
 	}
 
 	void peer::do_vote()
