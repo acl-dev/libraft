@@ -57,7 +57,7 @@
     <ClInclude Include="include\log_compaction_worker.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="include\vote_timer.h">
+    <ClInclude Include="include\election_timer.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
@@ -84,6 +84,9 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="src\log_compaction_worker.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="src\election_timer.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

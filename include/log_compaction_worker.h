@@ -6,7 +6,7 @@ namespace raft
 	{
 	public:
 		log_compaction_worker(node &_node);
-		void compaction_log();
+		void compact_log();
 	private:
 		virtual void* run();
 		node &node_;

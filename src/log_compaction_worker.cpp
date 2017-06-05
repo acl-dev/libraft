@@ -14,7 +14,7 @@ namespace raft
 		return NULL;
 	}
 
-	void log_compaction_worker::compaction_log()
+	void log_compaction_worker::compact_log()
 	{
 		set_detachable(true);
 		start();

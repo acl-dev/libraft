@@ -12,7 +12,7 @@ namespace raft
 
 		void notify_repliate();
 		
-		void notify_vote();
+		void notify_election();
 
 		log_index_t match_index();
 
@@ -40,23 +40,29 @@ namespace raft
 
 	private:
 		node		&node_;
-
 		std::string peer_id_;
 		acl::locker locker_;
+
 		log_index_t match_index_;
 		log_index_t next_index_;
-		bool to_replicate_;
+
+		bool to_stop_; 
 		bool to_vote_;
+		bool to_replicate_;
+
 		acl_pthread_cond_t *cond_;
 		acl_pthread_mutex_t *mutex_;
+		
 		timeval last_replicate_time_;
 		long long heart_inter_;
+		
 		acl::string replicate_service_path_;
 		acl::string vote_service_path_;
 		acl::string install_snapshot_service_path_;
+
 		acl::http_rpc_client *rpc_client_;
 		size_t rpc_faileds_;
 		size_t req_id_;
-		bool to_stop_;
+		
 	};
 }

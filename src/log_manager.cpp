@@ -74,6 +74,7 @@ namespace raft
 
 	size_t log_manager::log_count()
 	{
+		acl::lock_guard lg(locker_);
 		return logs_.size();
 	}
 

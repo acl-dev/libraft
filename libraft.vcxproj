@@ -123,9 +123,10 @@
     <ClInclude Include="include\raft.hpp" />
     <ClInclude Include="include\server.hpp" />
     <ClInclude Include="include\snapshot.h" />
-    <ClInclude Include="include\vote_timer.h" />
+    <ClInclude Include="include\election_timer.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\election_timer.cpp" />
     <ClCompile Include="src\log_manager.cpp" />
     <ClCompile Include="src\mmap_log.cpp" />
     <ClCompile Include="src\log_compaction_worker.cpp" />

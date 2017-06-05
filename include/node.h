@@ -7,6 +7,7 @@ namespace raft
 		E_NO_LEADER,
 		E_TIMEOUT,
 		E_UNKNOWN,
+		E_WRITE_LOG_ERROR,
 	};
 
 	struct version 
@@ -15,7 +16,7 @@ namespace raft
 		term_t term_;
 	};
 
-	struct replicate_waiter_t;
+	struct replicate_cond_t;
 	class node
 	{
 	public:
@@ -23,7 +24,7 @@ namespace raft
 		node();
 		
 		std::pair<status_t, version> replicate(
-			const std::string &data,int timeout_millis);
+			const std::string &data, unsigned int timeout_millis);
 		
 		bool is_leader();
 
@@ -51,14 +52,18 @@ namespace raft
 
 		friend class peer;
 		friend class log_compaction_worker;
-
+		friend class election_timer;
 		//for peer
 		bool is_candicate();
 
 		log_index_t get_last_log_index();
 
+		log_index_t gen_log_index();
+
 		term_t current_term();
 		
+		void update_term(term_t term);
+
 		role_t role();
 
 		void update_role(role_t _role);
@@ -76,6 +81,8 @@ namespace raft
 
 		void build_vote_request(vote_request &req);
 
+		void clear_vote_response();
+
 		void vote_response_callback(const std::string &peer_id, 
 			const vote_response &response);
 
@@ -86,15 +93,16 @@ namespace raft
 		bool get_snapshot(std::string &path);
 		
 		// log compaction things
-		std::map<log_index_t, std::string> scan_snapshots();
+		std::map<log_index_t, std::string> 
+			scan_snapshots();
 
-		bool check_log_compaction();
+		bool should_compact_log();
 		
-		bool check_making_snapshot();
+		bool check_compacting_log();
 
-		void async_log_compaction();
+		void async_compact_log();
 
-		void set_making_snapshot();
+		bool make_snapshot();
 
 		void do_compaction_log();
 		//
@@ -103,15 +111,23 @@ namespace raft
 
 		void update_committed_index(log_index_t index);
 
+		void set_election_timer();
+
+		void cancel_election_timer();
+
 		void election_timer_callback();
 
 		log_index_t committed_index();
 
 		log_index_t start_log_index();
 
+		//about peers function
 		void notify_peers_replicate_log();
 
+		void notify_peers_to_election();
+
 		void update_peers_next_index();
+		//end
 
 		bool handle_vote_request(
 			const vote_request &req, 
@@ -125,13 +141,15 @@ namespace raft
 			const install_snapshot_request &req, 
 			install_snapshot_response &resp);
 
-		void add_waiter(replicate_waiter_t *waiter);
+		void add_waiter(replicate_cond_t *waiter);
 
-		void remove_waiter(replicate_waiter_t *waiter);
+		void remove_waiter(replicate_cond_t *waiter);
 
-		void make_log_entry(const std::string &data, log_entry &entry);
+		void make_log_entry(const std::string &data,
+			log_entry &entry);
 
-		bool write_log(const std::string &data, log_index_t &index);
+		bool write_log(const std::string &data, 
+			log_index_t &index);
 
 		void signal_replicate_waiter(log_index_t index);
 
@@ -141,44 +159,45 @@ namespace raft
 
 		log_manager *log_manager_;
 
+		unsigned int election_timeout_;
 		log_index_t last_log_index_;
 		log_index_t committed_index_;
 		term_t		current_term_;
 		role_t		role_;
+		std::string raft_id_;
 		acl::locker	metadata_locker_;
 
+		typedef std::map<log_index_t, 
+			replicate_cond_t*> replicate_waiters_t;
 
-		std::map<log_index_t, replicate_waiter_t*>  replicate_waiters_;
+		replicate_waiters_t replicate_waiters_;
 		acl::locker waiters_locker_;
 
-		std::string raft_id_;
 
 		std::map<std::string, peer*> peers_;
-
 		acl::locker peers_locker_;
 
 
 		snapshot_callback *snapshot_callback_;
-
 		std::string snapshot_path_;
 
 		std::string log_path_;
-
 		std::string metadata_path_;
 
 		size_t max_log_size_;
-
 		size_t max_log_count_;
 
-		bool making_snapshot_;
+		bool compacting_log_;
+		acl::locker compacting_log_locker_;
 
-		acl::locker making_snapshot_locker_;
+		typedef std::map<std::string, 
+			vote_response> vote_responses_t;
 
-		//
-		std::map<std::string, vote_response> vote_responses_;
-		
+		vote_responses_t vote_responses_;
 		acl::locker vote_responses_locker_;
 
+		election_timer election_timer_;
 
+		log_compaction_worker log_compaction_worker_;
 	};
 }

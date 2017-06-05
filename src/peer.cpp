@@ -54,7 +54,7 @@ namespace raft
 
 	}
 
-	void peer::notify_vote()
+	void peer::notify_election()
 	{
 		acl_pthread_mutex_lock(mutex_);
 		if (!to_vote_)
