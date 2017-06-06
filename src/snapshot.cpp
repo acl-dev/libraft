@@ -8,7 +8,7 @@ namespace raft
 		snapshot_info info_;
 	};
 
-	bool write(acl::ofstream &file, const version &ver)
+	bool write(acl::ostream &stream, const version &ver)
 	{
 		snapshot_head head;
 
@@ -16,17 +16,17 @@ namespace raft
 		head.info_.set_last_included_term(ver.term_);
 		head.info_.set_last_snapshot_index(ver.index_);
 
-		if (!write(file, head.magic_string_))
+		if (!write(stream, head.magic_string_))
 			return false;
 
 		std::string buffer = head.info_.SerializeAsString();
-		if (!write(file, buffer))
+		if (!write(stream, buffer))
 			return false;
 
 		return true;
 	}
 
-	bool read(acl::ifstream &file, version &ver)
+	bool read(acl::istream &file, version &ver)
 	{
 		std::string magic_string;
 		std::string buffer;

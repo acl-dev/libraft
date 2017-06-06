@@ -10,7 +10,6 @@ namespace raft
 		~election_timer();
 
 		void set_timer(unsigned int delays_mills);
-
 		void cancel_timer();
 	private:
 		virtual void* run();

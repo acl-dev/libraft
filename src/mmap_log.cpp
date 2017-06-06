@@ -4,33 +4,30 @@
 #define __MAGIC_END__   987654321
 #define __64k__			64*1024
 
+#ifndef __INDEX__EXT__
+#define __INDEX__EXT__ ".index"
+#endif // __INDEX__EXT__
+
 namespace raft
 {
 
-	mmap_log::mmap_log(int max_size /*= __4MB__*/)
+	mmap_log::mmap_log(int file_size /*= __4MB__*/)
 	{
-		max_data_size_ = 0;
-		max_index_size_ = 0;
+		data_buf_size_ = 0;
+		index_buf_size_ = 0;
 
-		if (max_size < __4MB__)
-			max_size = __4MB__;
+		if (file_size < __4MB__)
+			file_size = __4MB__;
 
-		while (max_data_size_ < max_size)
-			max_data_size_ += __64k__;
+		while (data_buf_size_ < file_size)
+			data_buf_size_ += __64k__;
 
-		max_index_size_ = max_index_size(max_data_size_);
+		index_buf_size_ = max_index_size(data_buf_size_);
 
 		start_index_ = 0;
 		last_index_ = 0;
 		eof_ = false;
 		is_open_ = false;
-
-
-		if (!acl_pthread_rwlock_init(&rwlocker_, NULL))
-		{
-			logger_fatal("acl_pthread_rwlock_init error.%s",
-				acl_last_serror());
-		}
 	}
 
 	mmap_log::~mmap_log()
@@ -39,57 +36,83 @@ namespace raft
 			close();
 	}
 
-	bool mmap_log::open(const std::string &filename)
+	bool mmap_log::open(const std::string &filepath)
 	{
+		ref_guard g(this);
+
+		data_filepath_ = filepath;
+
+		acl_int64 file_size = acl_file_size(filepath.c_str());
+		
+		//not exist
+		if (file_size == -1)
+			file_size = data_buf_size_;
+		else
+			data_buf_size_ = file_size;
+
 		ACL_FILE_HANDLE fd = acl_file_open(
-			filename.c_str(),
+			filepath.c_str(),
 			O_RDWR | O_CREAT,
 			0600);
 
 		if (fd == ACL_FILE_INVALID)
 		{
 			logger_error("open %s error %s\r\n",
-				filename.c_str(),
+				filepath.c_str(),
 				acl_last_serror());
 			return false;
 		}
 
 		data_buf_ = data_wbuf_ =
-			(unsigned char*)open_mmap(fd, max_data_size_);
+			(unsigned char*)open_mmap(fd, file_size);
 
 		if (!data_buf_)
 		{
-			logger_error("open_mmap %s error %s\r\n", filename.c_str(),
+			logger_error("open_mmap %s error %s\r\n", filepath.c_str(),
 				acl_last_serror());
 			acl_file_close(fd);
 			return false;
 		}
 		acl_file_close(fd);
 
-		std::string indexfile = filename + ".index";
-		fd = acl_file_open(indexfile.c_str(), O_RDWR | O_CREAT, 0600);
+		std::string index_filepath = filepath + __INDEX__EXT__;
+		
+		file_size = acl_file_size(index_filepath.c_str());
+		if (file_size == -1)//not exist
+			file_size = index_buf_size_;
+		else
+			index_buf_size_ = file_size;
+
+		fd = acl_file_open(index_filepath.c_str(), 
+			O_RDWR | O_CREAT, 
+			0600);
+
 		if (fd == ACL_FILE_INVALID)
 		{
 			logger_error("open %s error %s\r\n",
-				indexfile.c_str(), acl_last_serror());
+				index_filepath.c_str(),acl_last_serror());
+
 			close_mmap(data_buf_);
 			data_buf_ = data_wbuf_ = NULL;
 			return false;
 		}
-		index_buf_ = index_wbuf_ = (unsigned char*)open_mmap(
-			fd,
-			max_index_size_);
+		index_buf_ = index_wbuf_ = 
+			(unsigned char*)open_mmap(fd, file_size);
+
+		acl_file_close(fd);
 
 		if (!index_buf_)
 		{
-			logger_error("acl_vstring_mmap_alloc %s error %s\r\n",
-				indexfile.c_str(), acl_last_serror());
+			logger_error("acl_vstring_mmap_alloc"
+				" %s error %s\r\n",
+				index_filepath.c_str(), 
+				acl_last_serror());
+
 			close_mmap(data_buf_);
 			data_buf_ = data_wbuf_ = NULL;
-			acl_file_close(fd);
 			return false;
 		}
-		acl_file_close(fd);
+
 		if (!reload_log())
 		{
 			logger_error("reload log failed");
@@ -99,35 +122,41 @@ namespace raft
 		return true;
 	}
 
-	bool mmap_log::close()
+	void mmap_log::close()
 	{
-		acl::lock_guard lg(write_locker_);
-		acl_assert(is_open_);
-		acl_assert(acl_pthread_rwlock_wrlock(&rwlocker_));
-
+		ref_guard g(this);
 
 		if (data_buf_)
 			close_mmap(data_buf_);
 		if (index_buf_)
 			close_mmap(index_buf_);
 
-		data_buf_ = data_wbuf_ = NULL;
-		index_buf_ = index_wbuf_ = NULL;
+		if (auto_delete())
+		{
+			if (remove(data_filepath_.c_str()) != 0)
+				logger_error("delete file error.%s", 
+					data_filepath_.c_str());
+
+			if (remove(index_filepath_.c_str()))
+				logger_error("delete file error.%s",
+					index_filepath_.c_str());
+		}
 		is_open_ = false;
-		return true;
 	}
 
 	bool mmap_log::write(const log_entry & entry)
 	{
+		ref_guard g(this);
 		acl::lock_guard lg(write_locker_);
 
 		size_t offset = (data_wbuf_ - data_buf_);
-		size_t remail_len = max_data_size_ - offset;
+		size_t remail_len = data_buf_size_ - offset;
 		size_t entry_len = get_sizeof(entry);
 
 		//for __MAGIC_START__, __MAGIC_END__ space
 		if (remail_len < entry_len + sizeof(unsigned int) * 2)
 		{
+			logger("mmaplog eof");
 			eof_ = true;
 			return false;
 		}
@@ -140,7 +169,7 @@ namespace raft
 
 		if (entry.index() < last_index_)
 		{
-			logger_error("log_entry error");
+			logger_error("log_entry error.%d", last_index_);
 			return false;
 		}
 
@@ -159,6 +188,7 @@ namespace raft
 
 	bool mmap_log::truncate(log_index_t index)
 	{
+		ref_guard g(this);
 		acl::lock_guard lg(write_locker_);
 
 		if (!is_open_)
@@ -203,7 +233,7 @@ namespace raft
 		if (start_index_ < last_index_)
 			start_index_ = last_index_;
 
-		return move_data_wbuf(last_index_);
+		return set_data_wbuf(last_index_);
 	}
 
 	bool mmap_log::read(log_index_t index, 
@@ -212,7 +242,7 @@ namespace raft
 		std::vector<log_entry> &entries, 
 		int &bytes)
 	{
-
+		ref_guard g(this);
 		if (max_bytes <= 0 || max_count <= 0)
 		{
 			logger_error("param error");
@@ -226,12 +256,9 @@ namespace raft
 			return false;
 		}
 
-		acl_assert(!acl_pthread_rwlock_rdlock(&rwlocker_));
-
 		unsigned char *buffer = get_data_buffer(index);
 		if (!buffer)
 		{
-			acl_assert(!acl_pthread_rwlock_unlock(&rwlocker_));
 			return false;
 		}
 
@@ -240,7 +267,7 @@ namespace raft
 			log_entry entry;
 
 			if (buffer - data_buf_ >=
-				(int)(max_data_size_ - one_index_size()))
+				(int)(data_buf_size_ - one_index_size()))
 				break;
 
 			if (!get_entry(buffer, entry))
@@ -259,19 +286,15 @@ namespace raft
 			if (entry.index() == last_index())
 				break;;
 		}
-		acl_assert(!acl_pthread_rwlock_unlock(&rwlocker_));
-
 		return !!entries.size();
 	}
 
 	bool mmap_log::read(log_index_t index, log_entry &entry)
 	{
-		acl_assert(!acl_pthread_rwlock_rdlock(&rwlocker_));
-
+		ref_guard g(this);
 		if (!is_open_)
 		{
 			logger("mmap log not open");
-			acl_assert(!acl_pthread_rwlock_unlock(&rwlocker_));
 			return false;
 		}
 
@@ -279,30 +302,32 @@ namespace raft
 
 		if (!get_entry(data_buf, entry))
 		{
-			acl_assert(!acl_pthread_rwlock_unlock(&rwlocker_));
 			return false;
 		}
-
-		acl_assert(!acl_pthread_rwlock_unlock(&rwlocker_));
 		return true;
 	}
 
 	bool mmap_log::eof()
 	{
+		ref_guard g(this);
 		return eof_;
 	}
 
 	raft::log_index_t mmap_log::last_index()
 	{
+		ref_guard g(this);
 		return last_index_;
 	}
-
+	std::string mmap_log::file_path()
+	{
+		ref_guard g(this);
+		return data_filepath_;
+	}
 	raft::log_index_t mmap_log::start_index()
 	{
-		acl_assert(!acl_pthread_rwlock_rdlock(&rwlocker_));
+		ref_guard g(this);
 		if (start_index_ == 0)
 			reload_start_index();
-		acl_assert(!acl_pthread_rwlock_unlock(&rwlocker_));
 		return start_index_;
 	}
 
@@ -350,7 +375,7 @@ namespace raft
 			return NULL;
 		}
 
-		acl_assert(offset < max_data_size_);
+		acl_assert(offset < data_buf_size_);
 		return data_buf_ + offset;
 	}
 
@@ -385,50 +410,66 @@ namespace raft
 
 	bool mmap_log::reload_log()
 	{
-		if (get_uint32(index_wbuf_) == __MAGIC_START__)
-		{
-			//get index
-			last_index_ = start_index_ = get_uint64(index_wbuf_);
-			//get offset
-			get_uint32(index_wbuf_);
-			if (get_uint32(index_wbuf_) != __MAGIC_END__)
-			{
-				logger_error("mmap_error");
-				return false;
-			}
+		unsigned int value = get_uint32(index_wbuf_);
 
-			size_t max_size = max_index_size_ - sizeof(int);
-
-			while (index_wbuf_ - index_buf_ < (int)max_size)
-			{
-				if (get_uint32(index_wbuf_) == __MAGIC_START__)
-				{
-					//index
-					last_index_ = get_uint64(index_wbuf_);
-					//offset
-					get_uint32(index_wbuf_);
-					if (get_uint32(index_wbuf_) != __MAGIC_END__)
-					{
-						logger_fatal("mmap index error");
-						return false;
-					}
-					continue;
-				}
-				//for get_uint32
-				index_wbuf_ -= sizeof(unsigned int);
-				break;
-			}
-		}
-		else
+		//empty file.
+		if (value == 0)
 		{
 			//for get_uint32
 			index_wbuf_ -= sizeof(unsigned int);
 			return true;
 		}
-		return move_data_wbuf(last_index_);
+		else if (value != __MAGIC_START__)
+		{
+			logger_error("reload_log error.not log file");
+			return false;
+		}
+		//get index
+		last_index_ = start_index_ = get_uint64(index_wbuf_);
+		//get offset
+		get_uint32(index_wbuf_);
+		if (get_uint32(index_wbuf_) != __MAGIC_END__)
+		{
+			logger_error("mmap_error");
+			return false;
+		}
+
+		size_t max_size = index_buf_size_ - sizeof(int);
+
+		while (index_wbuf_ - index_buf_ < (int)max_size)
+		{
+			value = get_uint32(index_wbuf_);
+			//end of index log
+			if (value == 0)
+			{
+				index_wbuf_ -= sizeof(unsigned int);
+				return set_data_wbuf(last_index_);
+
+			}
+			else if (value == __MAGIC_START__)
+			{
+				//index
+				last_index_ = get_uint64(index_wbuf_);
+				//offset
+				(void)get_uint32(index_wbuf_);
+
+				if (get_uint32(index_wbuf_) != __MAGIC_END__)
+				{
+					logger_fatal("mmap index error");
+					return false;
+				}
+				continue;
+			}
+			else
+			{
+				logger_fatal("mmap index error");
+				return false;
+			}
+		}
+		return false;
 	}
 
-	bool mmap_log::move_data_wbuf(log_index_t index)
+	bool mmap_log::set_data_wbuf(log_index_t index)
 	{
 		//index ==0 for empty
 		if (index == 0)
@@ -453,7 +494,7 @@ namespace raft
 			logger_fatal("mmap error");
 			return false;
 		}
-		//set data_wbuf to end
+
 		data_wbuf_ = data_buffer;
 		return true;
 	}
@@ -485,7 +526,7 @@ namespace raft
 
 		size_t offset = (index - start_index_) * one_index_size();
 
-		if (offset >= max_index_size_ - one_index_size())
+		if (offset >= index_buf_size_ - one_index_size())
 			return NULL;
 
 		return index_buf_ + offset;

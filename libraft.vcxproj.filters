@@ -60,6 +60,9 @@
     <ClInclude Include="include\election_timer.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="include\mmap_log_manager.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\raft.cpp">
@@ -87,6 +90,9 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="src\election_timer.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="src\mmap_log_manager.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

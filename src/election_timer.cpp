@@ -61,5 +61,7 @@ namespace raft
 
 			node_.election_timer_callback();
 		}
+
+		return NULL;
 	}
 }

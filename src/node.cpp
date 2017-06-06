@@ -100,7 +100,10 @@ namespace raft
 	{
 		max_log_count_ = size;
 	}
+	void node::init()
+	{
 
+	}
 	std::pair<status_t, version>
 		node::replicate(const std::string &data,
 			unsigned int timeout_millis)
@@ -124,10 +127,11 @@ namespace raft
 		acl_pthread_mutex_lock(cond->mutex_);
 		if (timeout_millis)
 		{
-			timespec timeout;
+			timespec timeout = {0, 0};
 			timeval now;
 
 			gettimeofday(&now, NULL);
+
 			timeout.tv_nsec = now.tv_sec;
 			timeout.tv_nsec = now.tv_usec * 1000;
 
@@ -191,10 +195,19 @@ namespace raft
 		acl::lock_guard lg(metadata_locker_);
 		return current_term_;
 	}
-
+	void node::update_leader_id(const std::string &leader_id)
+	{
+		acl::lock_guard lg(metadata_locker_);
+		if (leader_id_ != leader_id)
+			logger("find new leader.%s",leader_id.c_str());
+		leader_id_ = leader_id;
+	}
 	void node::update_term(term_t term)
 	{
 		acl::lock_guard lg(metadata_locker_);
+		if (current_term_ < term)
+			/*new term. has a vote to election who is leader*/
+			vote_for_.clear();
 		current_term_ = term;
 	}
 	node::role_t node::role()
@@ -215,6 +228,29 @@ namespace raft
 		return last_log_index_;
 	}
 
+	void node::add_waiter(replicate_cond_t *waiter)
+	{
+		acl::lock_guard lg(waiters_locker_);
+
+		acl_pthread_mutex_lock(waiter->mutex_);
+
+		waiter->it_ = replicate_conds_.insert(
+			std::make_pair(waiter->log_index_, waiter)).first;
+
+		acl_pthread_mutex_unlock(waiter->mutex_);
+	}
+	void node::remove_waiter(replicate_cond_t *waiter)
+	{
+		acl::lock_guard lg(waiters_locker_);
+
+		acl_pthread_mutex_lock(waiter->mutex_);
+
+		if (waiter->it_ != replicate_conds_.end())
+			replicate_conds_.erase(waiter->it_);
+		waiter->it_ = replicate_conds_.end();
+
+		acl_pthread_mutex_unlock(waiter->mutex_);
+	}
 	bool node::build_replicate_log_request(
 		replicate_log_entries_request &requst,
 		log_index_t index,
@@ -384,14 +420,15 @@ namespace raft
 
 	bool node::get_snapshot(std::string &path)
 	{
-		std::map<log_index_t, std::string>
+		std::map<log_index_t, std::string> 
 			snapshot_files_ = scan_snapshots();
 
-		if (snapshot_files_.empty())
-			return false;
-
-		path = snapshot_files_.rbegin()->second;
-		return true;
+		if (snapshot_files_.size())
+		{
+			path = snapshot_files_.rbegin()->second;
+			return true;
+		}
+		return false;
 	}
 
 	std::map<log_index_t, std::string>
@@ -406,13 +443,12 @@ namespace raft
 		{
 			logger_error("scan open error %s\r\n",
 				acl::last_serror());
-			return;
+			return {};
 		}
 
 		while ((filepath = scan.next_file(true)) != NULL)
 		{
-			if (acl_strrncasecmp(filepath,
-				__SNAPSHOT_EXT__,
+			if (acl_strrncasecmp(filepath, __SNAPSHOT_EXT__, 
 				strlen(__SNAPSHOT_EXT__)) == 0)
 			{
 				version ver;
@@ -424,7 +460,6 @@ namespace raft
 						acl::last_serror());
 					continue;
 				}
-
 				if (!read(file, ver))
 				{
 					logger_error("read_version file.%s",
@@ -469,7 +504,7 @@ namespace raft
 	bool node::make_snapshot()
 	{
 		std::string filepath;
-		if (snapshot_callback_->make_snapshot_callback(
+		if (snapshot_callback_->make_snapshot(
 			snapshot_path_,
 			filepath))
 		{
@@ -485,7 +520,7 @@ namespace raft
 	try_again:
 		log_index_t last_snapshot_index = 0;
 		std::string filepath;
-		int			dels = 0;
+		int			del_count = 0;
 
 		if (get_snapshot(filepath))
 		{
@@ -516,14 +551,14 @@ namespace raft
 				acl_assert(log_manager_->
 					destroy_log(it->first));
 				
-				dels++;
+				del_count++;
 				//delete half of logs
-				if (dels >= log_infos.size() / 2)
+				if (del_count >= log_infos.size() / 2)
 					break;;
 			}
 		}
 
-		if (!dels && !try_make_snapshot)
+		if (!del_count && !try_make_snapshot)
 		{
 			try_make_snapshot = true;
 			if(make_snapshot())
@@ -546,7 +581,7 @@ namespace raft
 	{
 		unsigned int timeout = election_timeout_;
 
-		srand(time(NULL));
+		srand((unsigned int)(time(NULL)%((unsigned int) -1)));
 		timeout += rand() % timeout;
 
 		election_timer_.set_timer(timeout);
@@ -633,36 +668,167 @@ namespace raft
 		return false;
 	}
 
+	void node::close_snapshot()
+	{
+		acl_assert(snapshot_info_);
+		acl_assert(snapshot_tmp_);
+		
+		delete snapshot_info_;
+		snapshot_info_ = NULL;
+
+		snapshot_tmp_->close();
+		delete snapshot_tmp_;
+		snapshot_tmp_ = NULL;
+	}
+
+	acl::fstream* node::get_snapshot_tmp(const snapshot_info &info)
+	{
+		if (!snapshot_info_)
+		{
+			acl::string filepath = snapshot_path_.c_str();
+			filepath.format_append("llu%.snapshot_tmp",
+				info.last_snapshot_index());
+			snapshot_info_ = new snapshot_info(info);
+			acl_assert(!snapshot_tmp_); 
+			snapshot_tmp_ = new acl::fstream();
+			if (!snapshot_tmp_->open_trunc(filepath))
+			{
+				logger_error("open filename error,filepath:%s,%s",
+					filepath.c_str(),
+					acl::last_serror());
+				return NULL;
+			}
+			return snapshot_tmp_;
+		}
+		if (info != *snapshot_info_)
+		{
+			const char *filepath = snapshot_tmp_->file_path();
+
+			logger_error("snapshot_info not match current snapshot temp file."
+				"remove old snapshot file. %s",filepath);
+
+			close_snapshot();
+			remove(filepath);
+			return get_snapshot_tmp(info);
+		}
+		return snapshot_tmp_;
+	}
+
+	void node::step_down()
+	{
+		if (role() == role_t::E_LEADER)
+		{
+			notify_replicate_conds(status_t::E_NO_LEADER);
+		}
+		else if (role() == role_t::E_CANDIDATE)
+		{
+			clear_vote_response();
+		}
+		set_election_timer();
+	}
+	
+	void node::load_snapshot_file()
+	{
+		version ver;
+
+		acl_assert(snapshot_tmp_);
+
+		std::string filepath = snapshot_tmp_->file_path();
+
+		acl_assert(snapshot_tmp_->fseek(0, SEEK_SET) != -1);
+		if (!read(*snapshot_tmp_, ver))
+		{
+			logger_error("read snapshot file error.path :%s",
+				snapshot_tmp_->file_path());
+			close_snapshot();
+			remove(filepath.c_str());
+			return ;
+		}
+		close_snapshot();
+
+		std::string temp;
+		if (get_snapshot(temp))
+		{
+			acl::ifstream file;
+			version temp_ver;
+
+			acl_assert(file.open_read(temp.c_str()));
+			acl_assert(read(file, temp_ver));
+			file.close();
+			if (ver.index_ < temp_ver.index_ || 
+				ver.term_ < temp_ver.term_)
+			{
+				logger("snapshot_tmp is old.%s", 
+					filepath.c_str());
+				return;
+			}
+		}
+
+		acl_assert(snapshot_callback_);
+		if (!snapshot_callback_->load_snapshot(filepath))
+		{
+			logger_error("receive_snapshot_callback failed,filepath:%s ",
+				filepath.c_str());
+			return;
+		}
+		std::string sfilepath = filepath;
+		while (sfilepath.size() && sfilepath.back() != '.')
+			sfilepath.pop_back();
+		sfilepath.pop_back();
+		sfilepath += __SNAPSHOT_EXT__;
+
+		if (rename(filepath.c_str(), sfilepath.c_str()) != 0)
+		{
+			logger_error("rename error.oldFilePath:%s,newFilePath:%s,%s",
+				filepath.c_str(), sfilepath.c_str(), acl::last_serror());
+		}
+		logger("load_snapshot_file ok ."
+			"filepath:%s,"
+			"last_log_index:%d,"
+			"last_log_term:%d,",
+			sfilepath.c_str(), ver.index_, ver.term_);
+	}
+	
 	bool node::handle_install_snapshot_requst(
 		const install_snapshot_request &req,
 		install_snapshot_response &resp)
 	{
-		return false;
+		acl::fstream *file = NULL;
+
+		resp.set_req_id(resp.req_id());
+
+		if (req.term() < current_term())
+		{
+			resp.set_bytes_stored(0);
+			resp.set_term(current_term());
+			return true;
+		}
+
+		step_down();
+		update_term(req.term());
+		update_leader_id(req.leader_id());
+
+		acl::lock_guard lg(snapshot_locker_);
+		acl_assert(file = get_snapshot_tmp(req.snapshot_info()));
+		if (file->fsize() != req.offset())
+		{
+			logger("offset error");
+			resp.set_bytes_stored(file->fsize());
+			return true;
+		}
+
+		const std::string &data = req.data();
+		if (file->write(data.c_str(), data.size()) != data.size())
+			logger_fatal("file write error.%s",acl::last_serror());
+
+		resp.set_bytes_stored(file->fsize());
+		if (req.done())
+		{
+			load_snapshot_file();
+		}
+		return true;
 	}
 
-	void node::add_waiter(replicate_cond_t *waiter)
-	{
-		acl::lock_guard lg(waiters_locker_);
-
-		acl_pthread_mutex_lock(waiter->mutex_);
-		
-		waiter->it_ = replicate_conds_.insert(
-			std::make_pair(waiter->log_index_, waiter)).first;
-		
-		acl_pthread_mutex_unlock(waiter->mutex_);
-	}
-	void node::remove_waiter(replicate_cond_t *waiter)
-	{
-		acl::lock_guard lg(waiters_locker_);
-
-		acl_pthread_mutex_lock(waiter->mutex_);
-
-		if(waiter->it_ != replicate_conds_.end())
-			replicate_conds_.erase(waiter->it_);
-		waiter->it_ = replicate_conds_.end();
-
-		acl_pthread_mutex_unlock(waiter->mutex_);
-	}
 	log_index_t node::gen_log_index()
 	{
 		acl::lock_guard lg(metadata_locker_);
@@ -670,7 +836,6 @@ namespace raft
 	}
 	void node::make_log_entry(const std::string &data, log_entry &entry)
 	{
-		log_index_t index;
 		term_t term = current_term();
 
 		entry.set_index(gen_log_index());
@@ -697,28 +862,23 @@ namespace raft
 		return true;
 	}
 
-	void node::notify_replicate_conds(log_index_t index)
+	void node::notify_replicate_conds(log_index_t index, 
+		status_t status /*= status_t::E_OK*/)
 	{
+		typedef std::map<log_index_t,
+			replicate_cond_t*>::iterator iterator_t;
+
 		acl::lock_guard lg(waiters_locker_);
-
-		std::map<log_index_t, replicate_cond_t*>::iterator
-			it = replicate_conds_.begin();
-
-
-		for (; it != replicate_conds_.end();)
+		
+		for (iterator_t it = replicate_conds_.begin();
+			it != replicate_conds_.end();)
 		{
 			if (it->first > index)
 				break;
 
 			replicate_cond_t *waiter = it->second;
-			waiter->notify();
+			waiter->notify(status);
 			it = replicate_conds_.erase(it);
 		}
 	}
-
-	void node::init()
-	{
-
-	}
-
 }

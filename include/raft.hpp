@@ -6,6 +6,7 @@
 #include "log.hpp"
 #include "mmap_log.hpp"
 #include "log_manager.h"
+#include "mmap_log_manager.h"
 #include "snapshot.h"
 #include "log_compaction_worker.h"
 #include "election_timer.h"

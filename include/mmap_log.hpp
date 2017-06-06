@@ -5,12 +5,9 @@ namespace raft
 	class mmap_log : public log
 	{
 	public:
-		mmap_log(int max_size = __4MB__);
-		~mmap_log();
+		mmap_log(int file_size = __4MB__);
 
 		virtual bool open(const std::string &filename);
-
-		virtual bool close();
 
 		virtual bool write(const log_entry & entry);
 
@@ -30,7 +27,13 @@ namespace raft
 
 		virtual log_index_t start_index();
 
+		virtual std::string file_path();
+
 	private:
+		~mmap_log();
+
+		virtual void close();
+
 		bool get_entry(unsigned char *& buffer, log_entry &entry);
 
 		unsigned char* get_data_buffer(log_index_t index);
@@ -41,7 +44,7 @@ namespace raft
 		
 		bool reload_log();
 		
-		bool move_data_wbuf(log_index_t index);
+		bool set_data_wbuf(log_index_t index);
 		
 		void reload_start_index();
 		
@@ -54,14 +57,14 @@ namespace raft
 		bool is_open_;
 		bool eof_;
 
+		std::string data_filepath_;
+		std::string index_filepath_;
 		log_index_t start_index_;
 		log_index_t last_index_;
 		acl::locker write_locker_;
 
-		acl_pthread_rwlock_t rwlocker_;
-
-		size_t max_data_size_;
-		size_t max_index_size_;
+		size_t data_buf_size_;
+		size_t index_buf_size_;
 
 		unsigned char *data_buf_;
 		unsigned char *data_wbuf_;

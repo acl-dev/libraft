@@ -1,27 +1,36 @@
 #include "raft.hpp"
 
+using namespace raft;
 
-int main()
+int count = 1000;
+
+
+void test_read(raft::mmap_log &log)
 {
-	using namespace raft;
-	mmap_log log;
+	acl_assert(log.start_index() == 1);
+	acl_assert(log.last_index() == 999);;
 
-	acl_assert(log.open("mmap.log"));
 
-	acl_assert(log.get_start_log_index() == 1);
-	acl_assert(log.get_last_log_index() == 999);;
+	for (int i = 1; i < count; i++)
+	{
+		log_entry entry;
+		log.read(i, entry);
+		acl_assert(entry.index() == i);
+		acl_assert(entry.log_data() == "hello");
+	}
 
+	acl_assert(log.last_index() == count - 1);
 
 	std::vector<log_entry> entries;
-	log.get_log_entries(1,1000000, 100000,entries);
+	int bytes = 0;
+	log.read(1, 1000000, 100000, entries, bytes);
 
 	acl_assert(entries.size() == 999);
 
-	return 0;
-
-	/*int count = 1000;
-
-	for (int i = 1; i < count;i++)
+}
+void test_write(mmap_log &log)
+{
+	for (int i = 1; i < count; i++)
 	{
 		log_entry entry;
 		entry.set_index(i);
@@ -31,17 +40,24 @@ int main()
 
 		acl_assert(log.write(entry));
 	}
+}
+int main()
+{
+	mmap_log log;
+	const char *filepath = "mmap.log";
+	
+	bool exist = acl_file_size(filepath) != -1;
+	acl_assert(log.open(filepath));
 
-	for (int i = 1; i < count; i++)
+	if (exist)
 	{
-		log_entry entry;
-		log.get_log_entry(i, entry);
-		acl_assert(entry.index() == i);
+		test_read(log);
 	}
-
-	acl_assert(log.get_last_log_index() == count - 1);
-
-	acl_assert(log.close());*/
+	else
+	{
+		test_write(log);
+	}
+	acl_assert(log.close());
 
 	return 0;
 }

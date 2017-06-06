@@ -10,7 +10,7 @@ namespace raft
 		E_WRITE_LOG_ERROR,
 	};
 
-	struct version 
+	struct version
 	{
 		log_index_t index_;
 		term_t term_;
@@ -53,6 +53,9 @@ namespace raft
 		friend class peer;
 		friend class log_compaction_worker;
 		friend class election_timer;
+		
+		void init();
+
 		//for peer
 		bool is_candicate();
 
@@ -63,6 +66,8 @@ namespace raft
 		term_t current_term();
 		
 		void update_term(term_t term);
+
+		void update_leader_id(const std::string &leader_id);
 
 		role_t role();
 
@@ -128,6 +133,14 @@ namespace raft
 
 		void update_peers_next_index();
 		//end
+		void step_down();
+
+		void load_snapshot_file();
+
+		acl::fstream *get_snapshot_tmp(
+			const snapshot_info &);
+
+		void close_snapshot();
 
 		bool handle_vote_request(
 			const vote_request &req, 
@@ -151,9 +164,9 @@ namespace raft
 		bool write_log(const std::string &data, 
 			log_index_t &index);
 
-		void notify_replicate_conds(log_index_t index);
+		void notify_replicate_conds(log_index_t index,
+			status_t = status_t::E_OK);
 
-		void init();
 
 		log_manager *log_manager_;
 
@@ -163,6 +176,8 @@ namespace raft
 		term_t		current_term_;
 		role_t		role_;
 		std::string raft_id_;
+		std::string leader_id_;
+		std::string vote_for_;
 		acl::locker	metadata_locker_;
 
 		typedef std::map<log_index_t, 
@@ -176,8 +191,11 @@ namespace raft
 		acl::locker peers_locker_;
 
 
-		snapshot_callback *snapshot_callback_;
-		std::string snapshot_path_;
+		snapshot_callback	*snapshot_callback_;
+		std::string			snapshot_path_;
+		snapshot_info		*snapshot_info_;
+		acl::fstream		*snapshot_tmp_;
+		acl::locker			snapshot_locker_;
 
 		std::string log_path_;
 		std::string metadata_path_;
@@ -185,17 +203,19 @@ namespace raft
 		size_t max_log_size_;
 		size_t max_log_count_;
 
-		bool compacting_log_;
+		bool		compacting_log_;
 		acl::locker compacting_log_locker_;
 
 		typedef std::map<std::string, 
 			vote_response> vote_responses_t;
 
 		vote_responses_t vote_responses_;
-		acl::locker vote_responses_locker_;
+		acl::locker		 vote_responses_locker_;
 
 		election_timer election_timer_;
 
 		log_compaction_worker log_compaction_worker_;
+
+		
 	};
 }

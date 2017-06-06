@@ -5,14 +5,16 @@ namespace raft
 
 	struct snapshot_callback
 	{
-		virtual bool receive_snapshot_callback(
+		virtual bool load_snapshot(
 			const std::string &filepath) = 0;
 
-		virtual bool make_snapshot_callback(const std::string &path, 
-			std::string &filename) = 0;
+		virtual bool make_snapshot(const std::string &path, 
+			std::string &filepath) = 0;
 	};
-
-	bool write(acl::ofstream &file, const version &ver);
 	
-	bool read(acl::ifstream &file, version &ver);
+	struct version;
+
+	inline bool write(acl::ostream &file, const version &ver);
+	
+	inline bool read(acl::istream &file, version &ver);
 }

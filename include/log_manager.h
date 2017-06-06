@@ -1,11 +1,13 @@
 #pragma once
-#define __LOG_EXT__ ".log"
+
 namespace raft
 {
 	class log_manager
 	{
 	public:
 		log_manager(const std::string &path);
+		
+		virtual ~log_manager();
 
 		bool write(const log_entry &entry);
 		
@@ -30,6 +32,7 @@ namespace raft
 		virtual bool destroy_log(log *_log) = 0;
 
 		log *find_log(log_index_t index);
+
 		bool write_new_log(const log_entry &entry);
 
 		void reload_logs();

@@ -1,13 +1,27 @@
 #include "raft.hpp"
+
+#ifndef __LOG_EXT__ 
+#define __LOG_EXT__ ".log"
+#endif // !__LOG_EXT__ 
+
 namespace raft
 {
 
 	log_manager::log_manager(const std::string &path) 
 		:path_(path)
 	{
+		if (path_.back() != '/' ||
+			path_.back() != '\\')
+			path_.push_back('/');
+
 		reload_logs();
 	}
 
+	log_manager::~log_manager()
+	{
+
+	}
+	
 	bool log_manager::write(const log_entry &entry)
 	{
 		acl::lock_guard lg(locker_);
@@ -81,10 +95,10 @@ namespace raft
 	raft::log_index_t log_manager::start_log_index()
 	{
 		acl::lock_guard lg(locker_);
-		if (logs_.empty())
-			return 0;
 
-		logs_.begin()->first;
+		if (logs_.size())
+			return logs_.begin()->first;
+		return 0;
 	}
 
 	std::map<log_index_t, log_index_t> log_manager::logs_info()
@@ -147,22 +161,22 @@ namespace raft
 	bool log_manager::write_new_log(const log_entry &entry)
 	{
 		//create new log 
-		std::string filepath(path_);
+		acl::string filepath(path_.c_str());
 
-		filepath += std::to_string(entry.index()) + __LOG_EXT__;
-		current_wlog_ = create(filepath);
+		filepath.format_append("%llu%s", 
+			entry.index(), __LOG_EXT__);
+
+		current_wlog_ = create(filepath.c_str());
 		if (!current_wlog_)
 		{
 			logger_error("create log error");
 			return false;
 		}
-
 		if (!current_wlog_->write(entry))
 		{
 			logger_error("write log error");
-			current_wlog_->close();
-			delete current_wlog_;
-			current_wlog_ = NULL;
+			release_log(current_wlog_);
+			acl_assert(current_wlog_);
 			return false;
 		}
 		log_index_t index = current_wlog_->start_index();

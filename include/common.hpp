@@ -142,25 +142,25 @@ namespace raft
 
 	//helper function for write read snapshot
 
-	bool write(acl::ofstream &file, const std::string &data)
+	inline bool write(acl::ostream &_stream, const std::string &data)
 	{
 		unsigned char len[sizeof(int)];
 		unsigned char *plen = len;
 
 		put_uint32(plen, (unsigned int)data.size());
-		if (file.write(len, sizeof(int)) != sizeof(int))
+		if (_stream.write(len, sizeof(int)) != sizeof(int))
 			return false;
-		if (file.write(data.c_str(), data.size()) != (int)data.size())
+		if (_stream.write(data.c_str(), data.size()) != (int)data.size())
 			return false;
 		return true;
 	}
 
-	bool read(acl::ifstream &file, std::string &buffer)
+	inline bool read(acl::istream &_stream, std::string &buffer)
 	{
 		unsigned char len[sizeof(int)];
 		unsigned char *plen = len;
 		
-		if (file.read(len, sizeof(int)) != sizeof(int))
+		if (_stream.read(len, sizeof(int)) != sizeof(int))
 			return false;
 
 		unsigned int size = get_uint32(plen);
@@ -168,6 +168,22 @@ namespace raft
 			return true;
 
 		buffer.resize(size);
-		return  file.read((char*)buffer.data(), size) == size;
+		return  _stream.read((char*)buffer.data(), size) == size;
+	}
+
+	//snapshot compare
+	inline bool operator == (const snapshot_info &left,
+		const snapshot_info &right)
+	{
+		return left.last_included_term()
+			== right.last_included_term() &&
+			left.last_snapshot_index()
+			== right.last_snapshot_index();
+	}
+
+	inline bool operator != (const snapshot_info &left,
+		const snapshot_info &right)
+	{
+		return !(left == right);
 	}
 }

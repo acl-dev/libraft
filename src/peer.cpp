@@ -92,6 +92,8 @@ namespace raft
 			to_sleep();
 
 		} while (!check_stop());
+
+		return NULL;
 	}
 
 	bool peer::do_install_snapshot()
@@ -304,12 +306,16 @@ namespace raft
 
 	void peer::to_sleep()
 	{
-		timespec times;
+		timeval now;
+		timespec timeout;
 
-		times.tv_nsec = 1000 * 100;//100 milliseconds
-		times.tv_sec = 0;
+		gettimeofday(&now, NULL);
+		timeout.tv_nsec = now.tv_usec * 1000;
+		timeout.tv_sec = now.tv_sec;
+		timeout.tv_nsec += 200 * 1000;//sleep 200 milliseconds
+
 		acl_pthread_mutex_lock(mutex_);
-		acl_pthread_cond_timedwait(cond_, mutex_, &times);
+		acl_pthread_cond_timedwait(cond_, mutex_, &timeout);
 		acl_pthread_mutex_unlock(mutex_);
 	}
 
