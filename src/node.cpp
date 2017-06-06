@@ -615,7 +615,7 @@ namespace raft
 
 	raft::log_index_t node::start_log_index()
 	{
-		return log_manager_->start_log_index();
+		return log_manager_->start_index();
 	}
 
 	void node::notify_peers_to_election()

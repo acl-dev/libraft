@@ -1,15 +1,14 @@
 #pragma once
-#define __4MB__			4*1024*1024
 namespace raft
 {
 	class mmap_log : public log
 	{
 	public:
-		mmap_log(int file_size = __4MB__);
+		mmap_log(log_index_t pre_index, int file_size );
 
 		virtual bool open(const std::string &filename);
 
-		virtual bool write(const log_entry & entry);
+		virtual log_index_t write(const log_entry & entry);
 
 		virtual bool truncate(log_index_t index);
 
@@ -22,6 +21,8 @@ namespace raft
 			int &bytes);
 
 		virtual bool eof();
+
+		virtual bool empty();
 
 		virtual log_index_t last_index();
 

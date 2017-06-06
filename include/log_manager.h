@@ -9,7 +9,7 @@ namespace raft
 		
 		virtual ~log_manager();
 
-		bool write(const log_entry &entry);
+		log_index_t write(const log_entry &entry);
 		
 		bool read(log_index_t index, int max_bytes,int max_count,
 			std::vector<log_entry> &entries);
@@ -18,30 +18,29 @@ namespace raft
 		
 		size_t log_count();
 		
-		log_index_t start_log_index();
+		log_index_t start_index();
 		
+		log_index_t last_index();
+
 		std::map<log_index_t, log_index_t> logs_info();
 
 		bool destroy_log(log_index_t log_start_index);
 
-	private:
+		void set_log_size(int log_size);
+	protected:
+		log_index_t last_index_no_lock();
+
 		virtual log *create(const std::string &filepath) = 0;
-
-		virtual void release_log(log *_log) = 0;
-
-		virtual bool destroy_log(log *_log) = 0;
 
 		log *find_log(log_index_t index);
 
-		bool write_new_log(const log_entry &entry);
-
 		void reload_logs();
 
-
 		std::string path_;
+		int log_size_;
 
 		acl::locker locker_;
-		log *current_wlog_;
+		log *last_log_;
 		std::map<log_index_t, log*> logs_;
 	};
 }

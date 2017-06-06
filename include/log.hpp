@@ -5,8 +5,8 @@ namespace raft
 	{
 		log()
 		{
-			auto_delete_file_ = false;
-			ref_ = 0;
+			auto_delete_ = false;
+			ref_ = 1;
 		}
 		virtual ~log() {};
 
@@ -14,7 +14,7 @@ namespace raft
 
 		virtual std::string file_path() = 0;
 		
-		virtual bool write(const log_entry &) = 0;
+		virtual log_index_t write(const log_entry &) = 0;
 		
 		virtual bool truncate(log_index_t) = 0;
 		
@@ -29,29 +29,33 @@ namespace raft
 		
 		virtual bool eof() = 0;
 
+		virtual bool empty() = 0;
+
 		virtual void auto_delete(bool val)
 		{
-			auto_delete_file_ = val;
+			acl::lock_guard lg(locker_);
+			auto_delete_ = val;
 		}
 
 		virtual bool auto_delete()
 		{
-			return auto_delete_file_;
+			acl::lock_guard lg(locker_);
+			return auto_delete_;
 		}
 
 		void inc_ref()
 		{
-			acl::lock_guard lg(ref_locker_);
+			acl::lock_guard lg(locker_);
 			ref_++;
 		}
 
 		void dec_ref()
 		{
 			int ref;
-			ref_locker_.lock();
+			locker_.lock();
 			ref_--;
 			ref = ref_;
-			ref_locker_.unlock();
+			locker_.unlock();
 
 			if (ref == 0)
 				close();
@@ -59,7 +63,7 @@ namespace raft
 
 		int ref()
 		{
-			acl::lock_guard lg(ref_locker_);
+			acl::lock_guard lg(locker_);
 			return ref_;
 		}
 	protected:
@@ -79,10 +83,10 @@ namespace raft
 			log *log_;
 		};
 
-		bool auto_delete_file_;
+		bool auto_delete_;
 		//ref
 		int ref_;
-		acl::locker ref_locker_;
+		acl::locker locker_;
 	};
 
 	
