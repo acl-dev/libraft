@@ -5,6 +5,8 @@ namespace raft
 
 	struct snapshot_callback
 	{
+		virtual ~snapshot_callback(){}
+
 		virtual bool load_snapshot(
 			const std::string &filepath) = 0;
 

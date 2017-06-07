@@ -9,6 +9,7 @@ namespace raft
 		E_UNKNOWN,
 		E_WRITE_LOG_ERROR,
 	};
+	struct replicate_cond_t;
 
 	struct version
 	{
@@ -16,7 +17,12 @@ namespace raft
 		term_t term_;
 	};
 
-	struct replicate_cond_t;
+	struct replicate_callback
+	{
+		virtual ~replicate_callback() {};
+
+		virtual bool commit(const std::string& data, const version& ver) = 0;
+	};
 	class node
 	{
 	public:
@@ -40,7 +46,7 @@ namespace raft
 
 		void set_max_log_count(size_t size);
 
-		std::string raft_id();
+		std::string raft_id()const;
 
 	private:
 		enum role_t
@@ -63,6 +69,14 @@ namespace raft
 
 		log_index_t gen_log_index();
 
+		log_index_t last_snapshot_index();
+
+		void set_last_snapshot_index(log_index_t index);
+
+		term_t last_snapshot_term();
+
+		void set_last_snapshot_term(term_t term);
+
 		term_t current_term();
 		
 		void update_term(term_t term);
@@ -70,6 +84,10 @@ namespace raft
 		void update_leader_id(const std::string &leader_id);
 
 		role_t role();
+
+		void update_vote_for(const std::string &vote_for);
+
+		const std::string &vote_for();
 
 		void update_role(role_t _role);
 
@@ -93,13 +111,13 @@ namespace raft
 
 		int peers_count();
 
-		void handle_new_term_callback(term_t term);
+		void handle_new_term(term_t term);
 
-		bool get_snapshot(std::string &path);
+		bool get_snapshot(std::string &path) const;
 		
 		// log compaction things
 		std::map<log_index_t, std::string> 
-			scan_snapshots();
+			scan_snapshots() const;
 
 		bool should_compact_log();
 		
@@ -107,7 +125,7 @@ namespace raft
 
 		void async_compact_log();
 
-		bool make_snapshot();
+		bool make_snapshot() const;
 
 		void do_compaction_log();
 		//
@@ -124,14 +142,14 @@ namespace raft
 
 		log_index_t committed_index();
 
-		log_index_t start_log_index();
+		log_index_t start_log_index()const;
 
 		//about peers function
 		void notify_peers_replicate_log();
 
 		void notify_peers_to_election();
 
-		void update_peers_next_index();
+		void update_peers_next_index(log_index_t index);
 		//end
 		void step_down();
 
@@ -142,8 +160,9 @@ namespace raft
 
 		void close_snapshot();
 
-		bool handle_vote_request(
-			const vote_request &req, 
+		void commit_log_entry(log_index_t leader_commit);
+
+		bool handle_vote_request(const vote_request &req, 
 			vote_response &resp);
 
 		bool handle_replicate_log_request(
@@ -162,7 +181,8 @@ namespace raft
 			log_entry &entry);
 
 		bool write_log(const std::string &data, 
-			log_index_t &index);
+			log_index_t &index, 
+			term_t &term);
 
 		void notify_replicate_conds(log_index_t index,
 			status_t = status_t::E_OK);
@@ -173,6 +193,7 @@ namespace raft
 		unsigned int election_timeout_;
 		log_index_t last_log_index_;
 		log_index_t committed_index_;
+		log_index_t last_applied_index_;
 		term_t		current_term_;
 		role_t		role_;
 		std::string raft_id_;
@@ -196,6 +217,8 @@ namespace raft
 		snapshot_info		*snapshot_info_;
 		acl::fstream		*snapshot_tmp_;
 		acl::locker			snapshot_locker_;
+		log_index_t			last_snapshot_index_;
+		term_t				last_snapshot_term_;
 
 		std::string log_path_;
 		std::string metadata_path_;
@@ -216,6 +239,6 @@ namespace raft
 
 		log_compaction_worker log_compaction_worker_;
 
-		
+		replicate_callback *replicate_callback_;
 	};
 }

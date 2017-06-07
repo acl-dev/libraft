@@ -15,7 +15,7 @@ namespace raft
 	log *mmap_log_manager::create(const std::string &filepath)
 	{
 
-		log *_log = new mmap_log(last_index_no_lock(), log_size_);
+		log *_log = new mmap_log(last_index_, log_size_);
 
 		if (!_log->open(filepath))
 		{

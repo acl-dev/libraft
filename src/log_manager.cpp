@@ -14,7 +14,10 @@ namespace raft
 			path_.back() != '\\')
 			path_.push_back('/');
 
-		log_size_ = 4 * 1024 * 1024;
+		log_size_	= 4 * 1024 * 1024;
+		last_index_ = 0;
+		last_log_	= NULL;
+		last_term_	= 0;
 		reload_logs();
 	}
 
@@ -35,12 +38,11 @@ namespace raft
 
 		acl::lock_guard lg(locker_);
 
-		if (last_log_ || (index = last_log_->write(entry)) == 0)
+		if (!last_log_ || (index = last_log_->write(entry)) == 0)
 		{
 			acl::string filepath(path_.c_str());
 
-			filepath.format_append("%llu%s",
-				last_index_no_lock() + 1, __LOG_EXT__);
+			filepath.format_append("%llu%s",last_index_ + 1, __LOG_EXT__);
 
 			last_log_ = create(filepath.c_str());
 			if (!last_log_)
@@ -56,10 +58,14 @@ namespace raft
 				last_log_ = NULL;
 				return false;
 			}
-			log_index_t index = last_log_->start_index();
-			logs_.insert(std::make_pair(index, last_log_));
+			log_index_t start_index = last_log_->start_index();
+			logs_.insert(std::make_pair(start_index, last_log_));
 			return true;
 		}
+		//update index ,term. 
+		last_index_ = index;
+		last_term_ = entry.term();
+
 		return index;
 	}
 
@@ -67,14 +73,35 @@ namespace raft
 	{
 		bool result = false;
 
-		if (index > last_index())
+		if (index > last_index() || index < start_index() || !log_count())
 			return false;
-
+		
 		log *log_ = find_log(index);
+		acl_assert(log_);
+
 		result = log_->read(index, entry);
 		log_->dec_ref();
 
 		return result;
+	}
+
+	void log_manager::truncate(log_index_t index)
+	{
+		acl::lock_guard lg(locker_);
+		std::map<log_index_t, log*>::iterator it = logs_.begin();
+		for(;it != logs_.end();)
+		{
+			log* _log = it->second;
+			if(_log->last_index() <= index)
+			{
+				_log->auto_delete(true);
+				_log->dec_ref();
+				it = logs_.erase(it);
+				continue;
+			}
+			_log->truncate(index);
+			return;
+		}
 	}
 
 	bool log_manager::read(log_index_t index, 
@@ -100,7 +127,7 @@ namespace raft
 			if (!log_->read(
 				index,
 				max_bytes - bytes,
-				max_count - (int)entries.size(),
+				max_count - static_cast<int>(entries.size()),
 				entries,
 				bytes))
 			{
@@ -126,13 +153,22 @@ namespace raft
 
 		if (logs_.size())
 			return logs_.begin()->first;
-		return 0;
+		/*
+		 * when log_manager empty. and last_index_ eq start_index_;
+		 */
+		return last_index_;
 	}
 
 	raft::log_index_t log_manager::last_index()
 	{
 		acl::lock_guard lg(locker_);
-		return last_index_no_lock();
+		return last_index_;
+	}
+
+	term_t log_manager::last_term()
+	{
+		acl::lock_guard lg(locker_);
+		return last_term_;
 	}
 
 	std::map<log_index_t, log_index_t> log_manager::logs_info()
@@ -148,20 +184,27 @@ namespace raft
 		return infos;
 	}
 
-	bool log_manager::destroy_log(log_index_t log_start_index)
+	int log_manager::discard_log(log_index_t log_start_index)
 	{
 		typedef std::map<log_index_t, log*>::iterator iterator_t;
 
 		acl::lock_guard lg(locker_);
+		int del_count_ = 0;
+		iterator_t it = logs_.begin();
 
-		iterator_t it = logs_.find(log_start_index);
+		for(; it!= logs_.end(); ++it)
+		{
+			if (it->second->last_index() <= log_start_index)
+			{
+				it->second->auto_delete(true);
+				it = logs_.erase(it);
+				del_count_++;
+			}
+			else
+				break;
+		}
 
-		if (it == logs_.end())
-			return false;
-
-		it->second->auto_delete(true);
-		logs_.erase(it);
-		return true;
+		return del_count_;
 	}
 
 	void log_manager::set_log_size(int log_size)
@@ -169,11 +212,16 @@ namespace raft
 		log_size_ = log_size;
 	}
 
-	raft::log_index_t log_manager::last_index_no_lock()
+	void log_manager::set_last_index(log_index_t index)
 	{
-		if (logs_.empty())
-			return 0;
-		return logs_.rbegin()->second->last_index();
+		acl::lock_guard lg(locker_);
+		last_index_ = index;
+	}
+
+	void log_manager::set_last_term(term_t term)
+	{
+		acl::lock_guard lg(locker_);
+		last_term_ = term;
 	}
 
 	log * log_manager::find_log(log_index_t index)

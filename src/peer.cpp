@@ -30,8 +30,8 @@ namespace raft
 
 		//send heartbeat to sync log index first
 		cond_ = acl_thread_cond_create();
-		mutex_ = (acl_pthread_mutex_t*)
-			acl_mymalloc(sizeof(acl_pthread_mutex_t));
+		mutex_ = static_cast<acl_pthread_mutex_t*>(
+			acl_mymalloc(sizeof(acl_pthread_mutex_t)));
 		acl_pthread_mutex_init(mutex_, &attr);
 		start();
 	}
@@ -79,6 +79,9 @@ namespace raft
 	{
 		do
 		{
+			/*
+			 *check_heartbeart() for 
+			 *repeat during idle periods to prevent election timeouts (¡ì5.2)			 */
 			if ( (check_do_replicate() || check_heartbeart()))
 			{
 				do_replicate();
@@ -159,17 +162,26 @@ namespace raft
 			if (node_.current_term() < resp.term())
 			{
 				logger("recevie new term.%d",resp.term());
-				node_.handle_new_term_callback(resp.term());
+				node_.handle_new_term(resp.term());
 				return false;
 			}
 			offset = resp.bytes_stored();
 			//done 
 			if (offset == file_size)
-				return true;
+			{
+				//update next_index
+				next_index_ = ver.index_ + 1;
+				match_index_ = ver.index_;
+			}
 		}
 		return false;
 	}
-
+	/*
+	 *If last log index ¡Ý nextIndex for a follower: send 
+	 *AppendEntries RPC with log entries starting at nextIndex 
+	 *If successful: update nextIndex and matchIndex for follower (¡ì5.3) 
+	 *If AppendEntries fails because of log inconsistency: 
+	 *decrement nextIndex and retry (¡ì5.3)	 */
 	void peer::do_replicate()
 	{
 		int entry_size = 1;
@@ -194,7 +206,6 @@ namespace raft
 					break;
 				}
 				continue;
-					
 			}
 			status = rpc_client_->proto_call(
 				replicate_service_path_,
@@ -213,7 +224,7 @@ namespace raft
 				term_t current_term = node_.current_term();
 				if (current_term < resp.term())
 				{
-					node_.handle_new_term_callback(resp.term());
+					node_.handle_new_term(resp.term());
 					break;
 				}
 				//update next_index.
@@ -290,7 +301,7 @@ namespace raft
 		return false;
 	}
 
-	bool peer::check_heartbeart()
+	bool peer::check_heartbeart() const
 	{
 		timeval now;
 

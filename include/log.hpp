@@ -20,8 +20,11 @@ namespace raft
 		
 		virtual bool read(log_index_t, log_entry &) = 0;
 
-		virtual bool read(log_index_t index, int max_bytes, 
-			int max_count, std::vector<log_entry> &, int &bytes) = 0;
+		virtual bool read(log_index_t index, 
+						  int max_bytes, 
+						  int max_count, 
+						  std::vector<log_entry> &entries, 
+						  int &bytes) = 0;
 
 		virtual log_index_t last_index() = 0;
 
@@ -51,10 +54,9 @@ namespace raft
 
 		void dec_ref()
 		{
-			int ref;
 			locker_.lock();
 			ref_--;
-			ref = ref_;
+			int ref = ref_;
 			locker_.unlock();
 
 			if (ref == 0)

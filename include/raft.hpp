@@ -15,3 +15,7 @@
 #include "node_service.h"
 #include "server.hpp"
 
+/*  raft paper https://raft.github.io/raft.pdf
+ *
+ *
+ */

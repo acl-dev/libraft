@@ -20,7 +20,7 @@ namespace raft
 	private:
 		void notify_stop();
 
-		bool check_heartbeart();
+		bool check_heartbeart() const;
 
 		bool check_do_replicate();
 		
