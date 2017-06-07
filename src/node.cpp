@@ -61,23 +61,23 @@ namespace raft
 
 	node::node()
 		: log_manager_(NULL),
-		  election_timeout_(3000),
-		  last_log_index_(0),
-		  committed_index_(0),
-	      last_applied_index_(0),
-		  current_term_(0),
-		  role_(E_FOLLOWER),
-		  snapshot_callback_(NULL),
-		  snapshot_info_(NULL),
-		  snapshot_tmp_(NULL),
-		  last_snapshot_index_(0),
-		  last_snapshot_term_(0),
-		  max_log_size_(4 * 1024 * 1024),
-		  max_log_count_(5),
-		  compacting_log_(false),
-		  election_timer_(*this),
-		  log_compaction_worker_(*this), 
-		  replicate_callback_(NULL)
+		election_timeout_(3000),
+		last_log_index_(0),
+		committed_index_(0),
+		applied_index_(0),
+		current_term_(0),
+		role_(E_FOLLOWER),
+		snapshot_callback_(NULL),
+		snapshot_info_(NULL),
+		snapshot_tmp_(NULL),
+		last_snapshot_index_(0),
+		last_snapshot_term_(0),
+		max_log_size_(4 * 1024 * 1024),
+		max_log_count_(5),
+		compacting_log_(false),
+		election_timer_(*this),
+		log_compaction_worker_(*this),
+		replicate_callback_(NULL)
 	{
 
 	}
@@ -141,8 +141,7 @@ namespace raft
 		}
 	}
 	std::pair<status_t, version>
-		node::replicate(const std::string &data,
-			unsigned int timeout_millis)
+		node::replicate(const std::string &data, unsigned int timeout_millis)
 	{
 		status_t	result;
 		term_t		term = 0;
@@ -175,14 +174,15 @@ namespace raft
 			timeout.tv_nsec = now.tv_usec * 1000;
 
 			timeout.tv_sec += timeout_millis / 1000;
-			timeout.tv_nsec += (timeout_millis % 1000) * 1000;
+			timeout.tv_nsec += (timeout_millis % 1000) * 1000 * 1000;
 
 			int status = acl_pthread_cond_timedwait(
 				cond->cond_,
-				cond->mutex_, 
+				cond->mutex_,
 				&timeout);
 
 			acl_pthread_mutex_unlock(cond->mutex_);
+
 			if (status == ACL_ETIMEDOUT)
 			{
 				result = status_t::E_TIMEOUT;
@@ -201,12 +201,9 @@ namespace raft
 		}
 		else
 		{
-			acl_assert(!acl_pthread_cond_wait(
-				cond->cond_,
-				cond->mutex_));
-
+			acl_assert(!acl_pthread_cond_wait(cond->cond_, cond->mutex_));
+			
 			result = cond->result_;
-
 			acl_pthread_mutex_unlock(cond->mutex_);
 		}
 
@@ -225,25 +222,24 @@ namespace raft
 		return role_ == E_CANDIDATE;
 	}
 
-	raft::log_index_t node::get_last_log_index()
-	{
-		acl::lock_guard lg(metadata_locker_);
-		return last_log_index_;
-	}
-
 	raft::term_t node::current_term()
 	{
 		acl::lock_guard lg(metadata_locker_);
 		return current_term_;
 	}
-	void node::update_leader_id(const std::string &leader_id)
+	std::string node::leader_id()
+	{
+		acl::lock_guard lg(metadata_locker_);
+		return leader_id_;
+	}
+	void node::set_leader_id(const std::string &leader_id)
 	{
 		acl::lock_guard lg(metadata_locker_);
 		if (leader_id_ != leader_id)
 			logger("find new leader.%s", leader_id.c_str());
 		leader_id_ = leader_id;
 	}
-	void node::update_term(term_t term)
+	void node::set_current_term(term_t term)
 	{
 		acl::lock_guard lg(metadata_locker_);
 		if (current_term_ < term)
@@ -251,6 +247,7 @@ namespace raft
 			vote_for_.clear();
 		current_term_ = term;
 	}
+
 	node::role_t node::role()
 	{
 		acl::lock_guard lg(metadata_locker_);
@@ -263,13 +260,13 @@ namespace raft
 		vote_for_ = vote_for;
 	}
 
-	const std::string& node::vote_for()
+	std::string node::vote_for()
 	{
 		acl::lock_guard lg(metadata_locker_);
 		return vote_for_;
 	}
 
-	void node::update_role(role_t _role)
+	void node::set_role(role_t _role)
 	{
 		acl::lock_guard lg(metadata_locker_);
 		role_ = _role;
@@ -277,8 +274,13 @@ namespace raft
 
 	raft::log_index_t node::last_log_index()
 	{
+		return log_manager_->last_index();
+	}
+
+	void node::set_last_log_index(log_index_t index)
+	{
 		acl::lock_guard lg(metadata_locker_);
-		return last_log_index_;
+		last_log_index_ = index;
 	}
 
 	void node::add_waiter(replicate_cond_t *waiter)
@@ -326,7 +328,7 @@ namespace raft
 		{
 			std::vector<log_entry> entries;
 			//index -1 for prev_log_term, set_prev_log_index
-			if (log_manager_->read(index - 1, __10MB__, 
+			if (log_manager_->read(index - 1, __10MB__,
 				entry_size, entries))
 			{
 				requst.set_prev_log_index(entries[0].index());
@@ -359,8 +361,7 @@ namespace raft
 		return false;
 	}
 
-	std::vector<log_index_t>
-		node::get_peers_match_index()
+	std::vector<log_index_t> node::get_peers_match_index()
 	{
 		std::vector<log_index_t> indexs;
 		std::map<std::string, peer*>::iterator it;
@@ -378,21 +379,34 @@ namespace raft
 
 	void node::replicate_log_callback()
 	{
-		std::vector<log_index_t> mactch_indexs
-			= get_peers_match_index();
+		/*
+		 * If there exists an N such that N > commitIndex, a majority
+		 * of matchIndex[i] ¡Ý N, and log[N].term == currentTerm:
+		 * set commitIndex = N (¡ì5.3, ¡ì5.4).
+		*/
+		if (!is_leader())
+		{
+			logger("not leader.");
+			return;
+		}
 
-		//myself 
-		mactch_indexs.push_back(last_log_index());
+		std::vector<log_index_t>
+			mactch_indexs = get_peers_match_index();
 
-		std::sort(mactch_indexs.begin(),
-			mactch_indexs.end());
+		mactch_indexs.push_back(last_log_index());//myself 
 
-		log_index_t majority_index =
-			mactch_indexs[mactch_indexs.size() / 2];
+		std::sort(mactch_indexs.begin(), mactch_indexs.end());
 
-		update_committed_index(majority_index);
+		log_index_t majority_index
+			= mactch_indexs[mactch_indexs.size() / 2];
 
-		notify_replicate_conds(majority_index);
+		if (majority_index > committed_index())
+		{
+			set_committed_index(majority_index);
+			notify_replicate_conds(majority_index);
+		}
+			
+
 	}
 
 	void node::build_vote_request(vote_request &req)
@@ -430,27 +444,29 @@ namespace raft
 			return;
 		}
 
-		int peers = peers_count();
+		int nodes = peers_count() + 1;//+1 for myself
 		int votes = 1;//myself
 
 		vote_responses_locker_.lock();
-		vote_responses_[peer_id] = response;
 
-		for (std::map<std::string, vote_response>::iterator it = 
-			vote_responses_.begin(); 
-			it != vote_responses_.end(); 
-			++it)
+		vote_responses_[peer_id] = response;
+		std::map<std::string, vote_response>
+			::iterator it = vote_responses_.begin();
+
+		for (; it != vote_responses_.end(); ++it)
 		{
 			if (it->second.vote_granted())
+			{
 				votes++;
+			}
 		}
 		vote_responses_locker_.unlock();
 
 		/*
-		 * If votes received from majority of servers: 
+		 * If votes received from majority of servers:
 		 * become leader
 		 */
-		if (votes > (peers + 1) / 2)
+		if (votes > nodes / 2)
 		{
 			become_leader();
 		}
@@ -458,10 +474,12 @@ namespace raft
 
 	void node::become_leader()
 	{
-		election_timer_.cancel_timer();
 
-		update_role(role_t::E_LEADER);
+		cancel_election_timer();
 
+		set_role(role_t::E_LEADER);
+
+		clear_vote_response();
 		/*
 		 * Reinitialized after election
 		 * nextIndex[] for each server, index of the next log entry
@@ -471,6 +489,8 @@ namespace raft
 		 * (initialized to 0, increases monotonically)
 		 */
 		update_peers_next_index(last_log_index() + 1);
+
+		update_peers_match_index(0);
 
 		notify_peers_replicate_log();
 	}
@@ -483,8 +503,7 @@ namespace raft
 
 	bool node::get_snapshot(std::string &path) const
 	{
-		std::map<log_index_t, std::string>
-			snapshot_files_ = scan_snapshots();
+		std::map<log_index_t, std::string> snapshot_files_ = scan_snapshots();
 
 		if (snapshot_files_.size())
 		{
@@ -541,8 +560,9 @@ namespace raft
 	{
 		if (log_manager_->log_count() <= max_log_count_ ||
 			check_compacting_log())
+		{
 			return false;
-
+		}
 		return true;
 	}
 
@@ -560,44 +580,54 @@ namespace raft
 		if (!compacting_log_)
 		{
 			compacting_log_ = true;
-			log_compaction_worker_.compact_log();
+			log_compaction_worker_.do_compact_log();
 		}
 	}
 
 	bool node::make_snapshot() const
 	{
 		std::string filepath;
-		if (snapshot_callback_->make_snapshot(
-			snapshot_path_,
-			filepath))
+		if (snapshot_callback_->make_snapshot(snapshot_path_, filepath))
 		{
-			logger("make_snapshot ok.%s", filepath.c_str());
-			return true;
+			std::string snapshot_file = filepath;
+			size_t pos = filepath.find_last_of('.');
+			if (pos != filepath.npos)
+			{
+				snapshot_file = filepath.substr(0, pos);
+			}
+			else
+			{
+				snapshot_file += __SNAPSHOT_EXT__;
+			}
+			if (rename(filepath.c_str(), snapshot_file.c_str()))
+			{
+				logger("make_snapshot done.");
+				return true;
+			}
+			logger_error("rename failed,%s",acl::last_serror());
 		}
+		logger_error("make_snapshot error.path:", snapshot_path_.c_str());
 		return false;
 	}
 	void node::do_compaction_log()
 	{
-		bool		try_make_snapshot = false;
+		bool do_make_snapshot = false;
 
 	try_again:
-		log_index_t last_snapshot_index = 0;
+		log_index_t index = 0;
 		std::string filepath;
-		int			del_count = 0;
 
 		if (get_snapshot(filepath))
 		{
 			acl::ifstream	file;
 			version			ver;
 
-			if (!file.open_read(filepath.c_str()) ||
-				!read(file, ver))
+			if (!file.open_read(filepath.c_str()) || !read(file, ver))
 			{
-				logger_error("snapshot file,error,%s,",
-					filepath.c_str());
+				logger_error("snapshot file,error,%s", filepath.c_str());
 			}
 			else
-				last_snapshot_index = ver.index_;
+				index = ver.index_;
 		}
 
 		std::map<log_index_t, log_index_t> log_infos =
@@ -605,28 +635,35 @@ namespace raft
 
 		acl_assert(log_infos.size());
 
+		int	count = 0;
+
 		for (std::map<log_index_t, log_index_t>::iterator it =
 			log_infos.begin(); it != log_infos.end(); ++it)
 		{
-			if (it->second < last_snapshot_index)
+			if (it->second < index)
 			{
-				del_count += log_manager_->discard_log(it->second);
+				count += log_manager_->discard_log(it->second);
+
 				//delete half of logs
-				if (del_count >= log_infos.size() / 2)
-					break;;
+				if (count >= log_infos.size() / 2)
+				{
+					break;
+				}
 			}
 		}
 
-		if (!del_count && !try_make_snapshot)
+		if (!count && !do_make_snapshot)
 		{
-			try_make_snapshot = true;
+			do_make_snapshot = true;
 			if (make_snapshot())
 				goto try_again;
+			else
+				logger_error("make_snapshot error");
 		}
 
 	}
 
-	void node::update_committed_index(log_index_t index)
+	void node::set_committed_index(log_index_t index)
 	{
 		acl::lock_guard lg(metadata_locker_);
 
@@ -665,9 +702,9 @@ namespace raft
 			set_election_timer();
 			return;
 		}
-			
 
-		/* 
+
+		/*
 		* : conversion to candidate, start election:
 		* : Increment currentTerm
 		* : Vote for self
@@ -677,8 +714,8 @@ namespace raft
 		*/
 
 		clear_vote_response();
-		update_role(role_t::E_CANDIDATE);
-		update_term(current_term() + 1);
+		set_role(role_t::E_CANDIDATE);
+		set_current_term(current_term() + 1);
 		update_vote_for(raft_id_);
 		notify_peers_to_election();
 		set_election_timer();
@@ -699,8 +736,8 @@ namespace raft
 	{
 		acl::lock_guard lg(peers_locker_);
 
-		for (std::map<std::string, peer *>::iterator it 
-			= peers_.begin();it != peers_.end(); ++it)
+		std::map<std::string, peer *>::iterator it = peers_.begin();
+		for (; it != peers_.end(); ++it)
 		{
 			it->second->notify_election();
 		}
@@ -710,18 +747,28 @@ namespace raft
 	{
 		acl::lock_guard lg(peers_locker_);
 
-		std::map<std::string, peer *>::iterator it =
-			peers_.begin();
+		std::map<std::string, peer *>::iterator it = peers_.begin();
 		for (; it != peers_.end(); ++it)
 		{
 			it->second->set_next_index(index);
 		}
 	}
+
+	void node::update_peers_match_index(log_index_t index)
+	{
+		acl::lock_guard lg(peers_locker_);
+
+		std::map<std::string, peer *>::iterator it = peers_.begin();
+		for (; it != peers_.end(); ++it)
+		{
+			it->second->set_match_index(index);
+		}
+	}
+
 	void node::notify_peers_replicate_log()
 	{
 		acl::lock_guard lg(peers_locker_);
-		std::map<std::string, peer *>::iterator it =
-			peers_.begin();
+		std::map<std::string, peer *>::iterator it = peers_.begin();
 		for (; it != peers_.end(); ++it)
 		{
 			it->second->notify_repliate();
@@ -733,40 +780,40 @@ namespace raft
 	{
 		resp.set_req_id(req.req_id());
 		resp.set_term(current_term());
-		resp.set_vote_granted(false);
 		resp.set_log_ok(false);
 
 		/* Reply false if term < currentTerm (¡ì5.1)*/
-		if(req.term() < current_term())
+		if (req.term() < current_term())
 		{
+			resp.set_vote_granted(false);
 			return true;
 		}
 		/*
-		 * If votedFor is null or candidateId, and candidate¡¯s log is at 
+		 * If votedFor is null or candidateId, and candidate¡¯s log is at
 		 * least as up-to-date as receiver¡¯s log, grant vote (¡ì5.2, ¡ì5.4)
 		 */
-		if(req.last_log_index() > log_manager_->last_index())
+		if (req.last_log_index() > last_log_index())
 		{
 			resp.set_log_ok(true);
 		}
-		else if(req.last_log_index() == log_manager_->last_index())
+		else if (req.last_log_index() == last_log_index())
 		{
-			if(req.last_log_term() == log_manager_->last_term())
+			if (req.last_log_term() == log_manager_->last_term())
 			{
 				resp.set_log_ok(true);
 			}
 		}
 
-		if(req.term() > current_term())
+		if (req.term() > current_term())
 		{
 			/*step down to follower then discover new node with higher term*/
 			step_down();
-			update_term(req.term());
+			set_current_term(req.term());
 		}
 
-		if(req.term() == current_term())
+		if (req.term() == current_term())
 		{
-			if(resp.log_ok() && vote_for().empty())
+			if (resp.log_ok() && vote_for().empty())
 			{
 				update_vote_for(req.candidate());
 				resp.set_vote_granted(true);
@@ -776,7 +823,7 @@ namespace raft
 		return true;
 	}
 
-	void node::commit_log_entry(log_index_t leader_commit)
+	void node::apply_log(log_index_t leader_commit)
 	{
 		for (log_index_t i = committed_index() + 1; i < leader_commit; ++i)
 		{
@@ -791,7 +838,7 @@ namespace raft
 					logger_error("replicate_callback error");
 					return;
 				}
-				update_committed_index(i);
+				set_committed_index(i);
 				continue;
 			}
 			logger_error("read log error");
@@ -803,45 +850,54 @@ namespace raft
 		const replicate_log_entries_request &req,
 		replicate_log_entries_response &resp)
 	{
-		resp.set_success(false);
+		resp.set_req_id(req.req_id());
 		/*currentTerm, for leader to update itself*/
 		resp.set_term(current_term());
-		resp.set_last_log_index(log_manager_->last_index());
+		resp.set_last_log_index(last_log_index());
 
 		/*Reply false if term < currentTerm (¡ì5.1)*/
 		if (req.term() < current_term())
+		{
+			resp.set_success(false);
 			return true;
+		}
+			
 
 		/*
 		 *If RPC request or response contains term T > currentTerm:
 		 *set currentTerm = T, convert to follower (¡ì5.1)
 		 */
-		update_term(req.term());
+		set_current_term(req.term());
 		step_down();
-		update_leader_id(req.leader_id());
-		
+		set_leader_id(req.leader_id());
+
 		resp.set_term(current_term());
 
-		/*Reply false if log doesn¡¯t contain an entry at prevLogIndex 
+		/*Reply false if log doesn¡¯t contain an entry at prevLogIndex
 		 *whose term matches prevLogTerm (¡ì5.3)
 		 */
-		if (req.prev_log_index() > log_manager_->last_index())
+		if (req.prev_log_index() > last_log_index())
 		{
+			resp.set_success(false);
 			return true;
-
-		}else if (req.prev_log_index() == log_manager_->last_index())
+		}
+		else if (req.prev_log_index() == last_log_index())
 		{
 
 			if (req.prev_log_index() == last_snapshot_index())
 			{
 				if (req.prev_log_term() != last_snapshot_term())
 				{
-					logger_error("libraft error.....");
+					logger_fatal ("cluster error.....");
 					return true;
 				}
 			}
 			else
 			{
+				/*
+				* reply false if log does not contain an entry at prevLogIndex 
+				* whose term matches prevLogTerm (¡ì5.3)
+				*/
 				if (req.prev_log_term() != log_manager_->last_term())
 				{
 					resp.set_last_log_index(req.prev_log_index() - 1);
@@ -882,7 +938,7 @@ namespace raft
 		for (int i = 0; i < req.entries_size(); i++)
 		{
 			const log_entry &entry = req.entries(i);
-			if (sync_log && entry.index() <= log_manager_->last_index())
+			if (sync_log && entry.index() <= last_log_index())
 			{
 				log_entry tmp;
 				if (log_manager_->read(entry.index(), tmp))
@@ -890,30 +946,35 @@ namespace raft
 					if (entry.term() == tmp.term())
 						continue;
 					/*
-					 *  If an existing entry conflicts with a new one (same index 
-					 *  but different terms), delete the existing entry and all that 
-					 *  follow it (¡ì5.3)					 */
+					 *  If an existing entry conflicts with a new one 
+					 *  (same index but different terms), delete the 					 *  existing entry and all that follow it (¡ì5.3)					 */
 					log_manager_->truncate(entry.index());
 					sync_log = false;
 				}
 			}
-			/* Append any new entries not already in the log*/
+			/* Append any new entries not already in the log */
 			if (!log_manager_->write(entry))
 			{
-				logger_error("write log error");
+				logger_error("write log error...");
 				return true;
 			}
 		}
 		/*
-		 *  If leaderCommit > commitIndex, set commitIndex = 
-		 *  min(leaderCommit, index of last new entry)
+		 *  If leaderCommit > commitIndex, 
+		 *  set commitIndex = min(leaderCommit, index of last new entry)
 		 */
-		log_index_t index = req.leader_commit();
-		if (index > log_manager_->last_index())
-			index = log_manager_->last_index();
+		if (req.leader_commit() > committed_index())
+		{
+			log_index_t index = req.leader_commit();
+			if (index > last_log_index())
+			{
+				index = last_log_index();
+			}
+			apply_log(index);
+		}
+			
 
-		commit_log_entry(index);
-		return false;
+		return true;
 	}
 
 	void node::close_snapshot()
@@ -975,7 +1036,7 @@ namespace raft
 		{
 			clear_vote_response();
 		}
-		update_role(role_t::E_FOLLOWER);
+		set_role(role_t::E_FOLLOWER);
 		set_election_timer();
 	}
 
@@ -1021,16 +1082,16 @@ namespace raft
 			sfilepath.pop_back();
 		sfilepath.pop_back();
 		sfilepath += __SNAPSHOT_EXT__;
-		
+
 		/*save snapshot file*/
 		if (rename(filepath.c_str(), sfilepath.c_str()) != 0)
 		{
 			logger_error("rename error.oldFilePath:%s,newFilePath:%s,%s",
 				filepath.c_str(), sfilepath.c_str(), acl::last_serror());
 		}
-		
+
 		/*it must be*/
-		if (log_manager_->last_index() < ver.index_)
+		if (last_log_index() < ver.index_)
 		{
 			/*discard the entire log*/
 			int count = log_manager_->discard_log(ver.index_);
@@ -1049,7 +1110,7 @@ namespace raft
 
 		acl_assert(snapshot_callback_);
 		/*
-		 *  Reset state machine using snapshot contents 
+		 *  Reset state machine using snapshot contents
 		 *  (and load snapshot¡¯s cluster configuration)
 		 */
 		if (!snapshot_callback_->load_snapshot(sfilepath))
@@ -1082,8 +1143,8 @@ namespace raft
 		}
 
 		step_down();
-		update_term(req.term());
-		update_leader_id(req.leader_id());
+		set_current_term(req.term());
+		set_leader_id(req.leader_id());
 
 		acl::lock_guard lg(snapshot_locker_);
 		acl_assert(file = get_snapshot_tmp(req.snapshot_info()));
@@ -1145,7 +1206,8 @@ namespace raft
 		entry.set_type(log_entry_type::e_raft_log);
 	}
 
-	bool node::write_log(const std::string &data, log_index_t &index, term_t &term)
+	bool node::write_log(const std::string &data, 
+		log_index_t &index, term_t &term)
 	{
 
 		log_entry entry;
@@ -1166,22 +1228,20 @@ namespace raft
 		return true;
 	}
 
-	void node::notify_replicate_conds(log_index_t index,
-		status_t status /*= status_t::E_OK*/)
+	void node::notify_replicate_conds(log_index_t index, status_t status)
 	{
-		typedef std::map<log_index_t,
-			replicate_cond_t*>::iterator iterator_t;
+
+		std::map<log_index_t, replicate_cond_t*>::iterator it;
 
 		acl::lock_guard lg(waiters_locker_);
 
-		for (iterator_t it = replicate_conds_.begin();
-			it != replicate_conds_.end();)
+		for (it = replicate_conds_.begin(); it != replicate_conds_.end();)
 		{
 			if (it->first > index)
+			{
 				break;
-
-			replicate_cond_t *waiter = it->second;
-			waiter->notify(status);
+			}
+			it->second->notify(status);
 			it = replicate_conds_.erase(it);
 		}
 	}

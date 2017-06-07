@@ -7,8 +7,7 @@ namespace raft
 	{
 		virtual ~snapshot_callback(){}
 
-		virtual bool load_snapshot(
-			const std::string &filepath) = 0;
+		virtual bool load_snapshot(const std::string &filepath) = 0;
 
 		virtual bool make_snapshot(const std::string &path, 
 			std::string &filepath) = 0;

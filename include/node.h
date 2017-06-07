@@ -57,7 +57,7 @@ namespace raft
 		};
 
 		friend class peer;
-		friend class log_compaction_worker;
+		friend class log_compaction;
 		friend class election_timer;
 		
 		void init();
@@ -65,9 +65,11 @@ namespace raft
 		//for peer
 		bool is_candicate();
 
-		log_index_t get_last_log_index();
-
 		log_index_t gen_log_index();
+
+		log_index_t last_log_index();
+
+		void set_last_log_index(log_index_t index);
 
 		log_index_t last_snapshot_index();
 
@@ -79,19 +81,23 @@ namespace raft
 
 		term_t current_term();
 		
-		void update_term(term_t term);
+		void set_current_term(term_t term);
 
-		void update_leader_id(const std::string &leader_id);
+		std::string leader_id();
+
+		void set_leader_id(const std::string &leader_id);
+
+		log_index_t committed_index();
+
+		void set_committed_index(log_index_t index);
 
 		role_t role();
 
+		void set_role(role_t _role);
+
+		std::string vote_for();
+
 		void update_vote_for(const std::string &vote_for);
-
-		const std::string &vote_for();
-
-		void update_role(role_t _role);
-
-		log_index_t last_log_index();
 
 		bool build_replicate_log_request(
 			replicate_log_entries_request &requst, 
@@ -132,15 +138,12 @@ namespace raft
 
 		void become_leader();
 
-		void update_committed_index(log_index_t index);
-
 		void set_election_timer();
 
 		void cancel_election_timer();
 
 		void election_timer_callback();
 
-		log_index_t committed_index();
 
 		log_index_t start_log_index()const;
 
@@ -155,15 +158,13 @@ namespace raft
 
 		void load_snapshot_file();
 
-		acl::fstream *get_snapshot_tmp(
-			const snapshot_info &);
+		acl::fstream *get_snapshot_tmp(const snapshot_info &);
 
 		void close_snapshot();
 
-		void commit_log_entry(log_index_t leader_commit);
+		void apply_log(log_index_t leader_commit);
 
-		bool handle_vote_request(const vote_request &req, 
-			vote_response &resp);
+		bool handle_vote_request(const vote_request &req, vote_response &resp);
 
 		bool handle_replicate_log_request(
 			const replicate_log_entries_request &req, 
@@ -177,23 +178,21 @@ namespace raft
 
 		void remove_waiter(replicate_cond_t *waiter);
 
-		void make_log_entry(const std::string &data,
-			log_entry &entry);
+		void make_log_entry(const std::string &data, log_entry &entry);
 
 		bool write_log(const std::string &data, 
-			log_index_t &index, 
-			term_t &term);
+			log_index_t &index, term_t &term);
 
-		void notify_replicate_conds(log_index_t index,
+		void notify_replicate_conds(log_index_t index, 
 			status_t = status_t::E_OK);
-
+		void update_peers_match_index(log_index_t index);
 
 		log_manager *log_manager_;
 
 		unsigned int election_timeout_;
 		log_index_t last_log_index_;
 		log_index_t committed_index_;
-		log_index_t last_applied_index_;
+		log_index_t applied_index_;
 		term_t		current_term_;
 		role_t		role_;
 		std::string raft_id_;
@@ -237,7 +236,7 @@ namespace raft
 
 		election_timer election_timer_;
 
-		log_compaction_worker log_compaction_worker_;
+		log_compaction log_compaction_worker_;
 
 		replicate_callback *replicate_callback_;
 	};

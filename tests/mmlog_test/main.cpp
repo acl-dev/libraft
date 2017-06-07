@@ -1,4 +1,7 @@
-#include "raft.hpp"
+#include <string>
+#include <iostream>
+
+/*#include "raft.hpp"
 
 using namespace raft;
 
@@ -58,6 +61,20 @@ int main()
 		test_write(log);
 	}
 	acl_assert(log.close());
+
+	return 0;
+}
+
+*/
+
+int main()
+{
+	std::string filepath = "hello.snapshot";
+
+	auto pos = filepath.find_last_of('.');
+	auto name = filepath.substr(0, pos);
+
+	std::cout << name << std::endl;
 
 	return 0;
 }

@@ -574,4 +574,24 @@ namespace raft
 #endif
 	}
 
+	mmap_log_manager::mmap_log_manager(const std::string &log_path)
+		:log_manager(log_path)
+	{
+
+	}
+
+	log *mmap_log_manager::create(const std::string &filepath)
+	{
+
+		log *_log = new mmap_log(last_index_, log_size_);
+
+		if (!_log->open(filepath))
+		{
+			logger_error("mmap_log open error,%s",
+				filepath.c_str());
+			return NULL;
+		}
+		return _log;
+	}
+
 }

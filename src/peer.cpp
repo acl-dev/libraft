@@ -69,6 +69,13 @@ namespace raft
 		acl::lock_guard lg(locker_);
 		next_index_ = index;
 	}
+
+	void peer::set_match_index(log_index_t index)
+	{
+		acl::lock_guard lg(locker_);
+		match_index_ = index;
+	}
+
 	raft::log_index_t peer::match_index()
 	{
 		acl::lock_guard lg(locker_);
@@ -310,20 +317,20 @@ namespace raft
 		diff *= 1000;
 		diff += (now.tv_usec - now.tv_usec) / 1000;
 
-		if (diff <= heart_inter_)
+		if (diff < heart_inter_)
 			return false;
 		return true;
 	}
 
 	void peer::to_sleep()
 	{
-		timeval now;
 		timespec timeout;
 
-		gettimeofday(&now, NULL);
-		timeout.tv_nsec = now.tv_usec * 1000;
-		timeout.tv_sec = now.tv_sec;
-		timeout.tv_nsec += 200 * 1000;//sleep 200 milliseconds
+		timeout.tv_sec = last_replicate_time_.tv_sec;
+		timeout.tv_nsec = last_replicate_time_.tv_usec * 1000;
+
+		timeout.tv_sec += heart_inter_ / 1000;
+		timeout.tv_nsec += heart_inter_ % 1000 * 1000 * 1000;
 
 		acl_pthread_mutex_lock(mutex_);
 		acl_pthread_cond_timedwait(cond_, mutex_, &timeout);

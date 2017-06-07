@@ -43,7 +43,7 @@ namespace raft
 			timeout.tv_sec = now.tv_sec;
 			timeout.tv_nsec = now.tv_usec * 1000;
 			timeout.tv_sec += delay_ / 1000;
-			timeout.tv_nsec += (delay_ % 1000) * 1000;
+			timeout.tv_nsec += (delay_ % 1000) * 1000* 1000;
 
 			acl_assert(!acl_pthread_mutex_lock(mutex_));
 

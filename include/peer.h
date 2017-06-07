@@ -17,6 +17,9 @@ namespace raft
 		log_index_t match_index();
 
 		void set_next_index(log_index_t index);
+
+		void set_match_index(log_index_t index);
+
 	private:
 		void notify_stop();
 

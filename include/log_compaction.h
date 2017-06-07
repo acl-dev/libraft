@@ -2,11 +2,11 @@
 namespace raft
 {
 	class node;
-	class log_compaction_worker: private acl::thread
+	class log_compaction: private acl::thread
 	{
 	public:
-		log_compaction_worker(node &_node);
-		void compact_log();
+		log_compaction(node &_node);
+		void do_compact_log();
 	private:
 		virtual void* run();
 		node &node_;
