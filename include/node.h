@@ -20,9 +20,9 @@ namespace raft
 		term_t term_;
 	};
 
-	struct replicate_callback
+	struct apply_callback
 	{
-		virtual ~replicate_callback() {};
+		virtual ~apply_callback() {};
 
 		/**
 		 * \brief 
@@ -45,13 +45,17 @@ namespace raft
 		
 		node();
 		/**
-		 * \brief replicate data to raft cluster .when N (N > nodes/2 ) nodes recevie data,
-		 * it will return {E_OK,version{ log_index, log_term}}.  log_index is index of 
+		 * \brief replicate data to raft cluster .when N (N > nodes/2 ) 
+		 * nodes receive data,
+		 * it will return {E_OK,version{ log_index, log_term}}.  
+		 * log_index is index of 
 		 * the data in raft cluster.M is term of 
-		 * data in the raft cluster. user should safe the version(N,M) for making snapshot in the further.
+		 * data in the raft cluster. user should safe the version(N,M) for 
+		 * making snapshot in the further.
 		 * \param data : to replicate to raft cluster
 		 * \param timeout_millis : wait for replicate done
-		 * \return if replicate done without timeout .return {E_OK,{log_index, log_term}}
+		 * \return if replicate done without timeout .
+		 * return {E_OK,{log_index, log_term}}
 		 * if is not leader,will return {E_NO_LEADER,{0, 0}}.
 		 * if write data to log failed. it will return {E_WRITE_LOG_ERROR,{0, 0}}.
 		 * if wait replicate timeout ,will return {E_TIMEOUT, {0, 0}}.
@@ -60,9 +64,12 @@ namespace raft
 			replicate(const std::string &data, unsigned int timeout_millis);
 
 		/**
-		 * \brief interface for user to update applied_index.if node is leader and user invoke replicate(...)
-		 * to replicate data to raft cluster and return {E_OK,{log_index, log_term}}.user user should apply 
-		 * data to state machine. and invoke update_applied_index(log_index).otherwise replicate_callback will
+		 * \brief interface for user to update applied_index.
+		 * if node is leader and user invoke replicate(...)
+		 * to replicate data to raft cluster and 
+		 * return {E_OK,{log_index, log_term}}.user user should apply 
+		 * data to state machine. and invoke update_applied_index(log_index).
+		 * otherwise replicate_callback will
 		 * be invoke to apply this data again and again.
 		 * 
 		 * \param index return from invoke replicate ,{E_OK, {index, _}};
@@ -85,7 +92,7 @@ namespace raft
 		/**
 		 * \brief give snapshot_callback handle to node .
 		 * when this node do log compaction, snapshot_callback::make_snapshot(...)
-		 * will be invoke. and when this node recevie a snapshot file, 
+		 * will be invoke. and when this node receive a snapshot file, 
 		 * load_snapshot(...) will be invoke.
 		 * \param callback snapshot_callback obj
 		 */
@@ -98,7 +105,7 @@ namespace raft
 		 * the data
 		 * \param callback replicate_callback handle,
 		 */
-		void bind_replicate_callback(replicate_callback *callback);
+		void bind_apply_callback(apply_callback *callback);
 
 
 		/**
@@ -133,8 +140,10 @@ namespace raft
 
 
 		/**
-		 * \brief set max count of log files, when the count of log files  >= this count
-		 * node will do log compaction to delete half of logs.and maybe make a snapshot if need
+		 * \brief set max count of log files, when
+		 * the count of log files  >= this count
+		 * node will do log compaction to delete half of logs.
+		 * and maybe make a snapshot if need
 		 * \param count max count of log files
 		 */
 		void set_max_log_count(size_t count);
@@ -148,7 +157,7 @@ namespace raft
 
 		/**
 		* \brief this interface should regist to server to process vote 
-		* request  from other candicate
+		* request  from other candidate
 		* \param req vote_request req
 		* \param resp vote_response resp
 		* \return return true
@@ -156,20 +165,22 @@ namespace raft
 		bool handle_vote_request(const vote_request &req, vote_response &resp);
 
 		/**
-		* \brief this interface should be registed to server to process leader replicate data request .
-		* when leader invote replicate(...) and data will send to  follower and candicate. 
-		* follower and candicate will save the data into log. and will commit to
+		* \brief this interface should regist to server to process 
+		* leader replicate data request .
+		* when leader invoke replicate(...) and data will send to 
+		* follower and candidate. 
+		* follower and candidate will save the data into log. and will commit to
 		* user to apply.
 		* \param req replicate_log_entries_request send from leader
 		* \param resp replicate_log_entries_response  send back to leader
-		* \return retrun true
+		* \return return true
 		*/
 		bool handle_replicate_log_request(
 			const replicate_log_entries_request &req,
 			replicate_log_entries_response &resp);
 
 		/**
-		* \brief this interface should be registed to server to process install_snapshot_request rpc
+		* \brief this interface should regist to server to process install_snapshot_request 
 		* when the follower miss logs and leader has not log to replicate to this node,
 		* leader will send snapshot file to follower instead.
 		* \param req install_snapshot_request send from leader.
@@ -191,7 +202,7 @@ namespace raft
 		friend class peer;
 		friend class log_compaction;
 		friend class election_timer;
-		
+
 		void init();
 
 		//for peer
@@ -319,6 +330,9 @@ namespace raft
 
 		void update_peers_match_index(log_index_t index);
 	private:
+		/**
+		 * \brief apply log thread
+		 */
 		class apply_log : private acl::thread
 		{
 		public:
@@ -397,7 +411,7 @@ namespace raft
 
 		election_timer     election_timer_;
 		log_compaction     log_compaction_worker_;
-		replicate_callback *replicate_callback_;
+		apply_callback     *apply_callback_;
 		apply_log          apply_log_;
 	};
 }

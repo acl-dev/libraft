@@ -77,7 +77,7 @@ namespace raft
 		  compacting_log_(false),
 		  election_timer_(*this),
 		  log_compaction_worker_(*this),
-		  replicate_callback_(NULL),
+		  apply_callback_(NULL),
 	      apply_log_(*this)
 	{
 
@@ -93,9 +93,9 @@ namespace raft
 	{
 		snapshot_callback_ = callback;
 	}
-	void node::bind_replicate_callback(replicate_callback *callback)
+	void node::bind_apply_callback(apply_callback *callback)
 	{
-		replicate_callback_ = callback;
+		apply_callback_ = callback;
 	}
 	void node::set_snapshot_path(const std::string &path)
 	{
@@ -292,7 +292,11 @@ namespace raft
 	void node::update_applied_index(log_index_t index)
 	{
 		acl::lock_guard lg(metadata_locker_);
-		applied_index_ = index;
+		if(index != applied_index_ + 1)
+		{
+			applied_index_ = index;
+		}
+			
 	}
 	raft::log_index_t node::last_log_index() const
 	{
@@ -819,7 +823,7 @@ namespace raft
 		}
 	}
 
-	void node::handle_vote_request(const vote_request &req,
+	bool node::handle_vote_request(const vote_request &req,
 		vote_response &resp)
 	{
 		resp.set_req_id(req.req_id());
@@ -833,8 +837,8 @@ namespace raft
 			return true;
 		}
 		/*
-		 * If votedFor is null or candidateId, and candidate¡¯s log is at
-		 * least as up-to-date as receiver¡¯s log, grant vote (¡ì5.2, ¡ì5.4)
+		 * If votedFor is null or candidateId, and candidate's log is at
+		 * least as up-to-date as receiver's log, grant vote (¡ì5.2, ¡ì5.4)
 		 */
 		if (req.last_log_index() > last_log_index())
 		{
@@ -879,7 +883,7 @@ namespace raft
 			{
 				ver.index_ = entry.index();
 				ver.term_ = entry.term();
-				if (!replicate_callback_->apply(entry.log_data(), ver))
+				if (!apply_callback_->apply(entry.log_data(), ver))
 				{
 					logger_error("replicate_callback error");
 					return;
@@ -919,7 +923,7 @@ namespace raft
 
 		resp.set_term(current_term());
 
-		/*Reply false if log doesn¡¯t contain an entry at prevLogIndex
+		/*Reply false if log doesn't contain an entry at prevLogIndex
 		 *whose term matches prevLogTerm (¡ì5.3)
 		 */
 		if (req.prev_log_index() > last_log_index())
