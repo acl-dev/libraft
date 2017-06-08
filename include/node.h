@@ -5,9 +5,8 @@ namespace raft
 	{
 		E_OK,
 		E_NO_LEADER,
-		E_TIMEOUT,
-		E_UNKNOWN,
 		E_WRITE_LOG_ERROR,
+		E_UNKNOWN,
 	};
 	struct replicate_cond_t;
 
@@ -27,7 +26,8 @@ namespace raft
 		/**
 		 * \brief 
 		 * \param data from leader
-		 * \param ver user should save this for do snapshot.
+		 * \param ver user should save this version for doing snapshot 
+		 * in the future
 		 * snapshot need version to store snapshot info into file
 		 * \return return true when user apply data ok. and node will auto update
 		 * applied index. return false, node will invoke apply data again and again.
@@ -49,19 +49,17 @@ namespace raft
 		 * nodes receive data,
 		 * it will return {E_OK,version{ log_index, log_term}}.  
 		 * log_index is index of 
-		 * the data in raft cluster.M is term of 
-		 * data in the raft cluster. user should safe the version(N,M) for 
-		 * making snapshot in the further.
+		 * the data in cluster.log_term is term of 
+		 * data in the cluster. user should safe the version(log_index,log_term)
+		 * for making snapshot in the further.
 		 * \param data : to replicate to raft cluster
-		 * \param timeout_millis : wait for replicate done
 		 * \return if replicate done without timeout .
 		 * return {E_OK,{log_index, log_term}}
 		 * if is not leader,will return {E_NO_LEADER,{0, 0}}.
-		 * if write data to log failed. it will return {E_WRITE_LOG_ERROR,{0, 0}}.
-		 * if wait replicate timeout ,will return {E_TIMEOUT, {0, 0}}.
+		 * if write data to log failed,
+		 * it will return {E_WRITE_LOG_ERROR,{0, 0}}.
 		 */
-		std::pair<status_t, version> 
-			replicate(const std::string &data, unsigned int timeout_millis);
+		std::pair<status_t, version> replicate(const std::string &data);
 
 		/**
 		 * \brief interface for user to update applied_index.

@@ -154,8 +154,7 @@ namespace raft
 			last_snapshot_term_ = ver.term_;
 		}
 	}
-	std::pair<status_t, version>
-		node::replicate(const std::string &data, unsigned int timeout_millis)
+	std::pair<status_t, version> node::replicate(const std::string &data)
 	{
 		status_t	result;
 		term_t		term = 0;
@@ -171,60 +170,20 @@ namespace raft
 		}
 
 		//todo make a replicate_cond_t pool for this;
-		replicate_cond_t *cond = new replicate_cond_t;
+		replicate_cond_t cond;
 
-		cond->log_index_ = index;
+		cond.log_index_ = index;
 
-		add_replicate_cond(cond);
+		add_replicate_cond(&cond);
 
 		notify_peers_replicate_log();
 
-		acl_pthread_mutex_lock(cond->mutex_);
-		if (timeout_millis)
-		{
-			timespec timeout = { 0, 0 };
-			timeval now;
+		acl_pthread_mutex_lock(cond.mutex_);
 
-			gettimeofday(&now, NULL);
+		acl_assert(!acl_pthread_cond_wait(cond.cond_, cond.mutex_));
 
-			timeout.tv_nsec = now.tv_sec;
-			timeout.tv_nsec = now.tv_usec * 1000;
-
-			timeout.tv_sec += timeout_millis / 1000;
-			timeout.tv_nsec += (timeout_millis % 1000) * 1000 * 1000;
-
-			int status = acl_pthread_cond_timedwait(
-				cond->cond_,
-				cond->mutex_,
-				&timeout);
-
-			acl_pthread_mutex_unlock(cond->mutex_);
-
-			if (status == ACL_ETIMEDOUT)
-			{
-				result = status_t::E_TIMEOUT;
-
-				//timeout remove myself
-				remove_replicate_cond(cond);
-			}
-			else if (!status)
-			{
-				result = cond->result_;
-			}
-			else
-			{
-				result = status_t::E_UNKNOWN;
-			}
-		}
-		else
-		{
-			acl_assert(!acl_pthread_cond_wait(cond->cond_, cond->mutex_));
-			
-			result = cond->result_;
-			acl_pthread_mutex_unlock(cond->mutex_);
-		}
-
-		delete cond;
+		result = cond.result_;
+		acl_pthread_mutex_unlock(cond.mutex_);
 		return{ result, version(index ,term ) };
 	}
 
