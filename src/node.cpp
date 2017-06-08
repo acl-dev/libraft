@@ -61,23 +61,24 @@ namespace raft
 
 	node::node()
 		: log_manager_(NULL),
-		election_timeout_(3000),
-		last_log_index_(0),
-		committed_index_(0),
-		applied_index_(0),
-		current_term_(0),
-		role_(E_FOLLOWER),
-		snapshot_callback_(NULL),
-		snapshot_info_(NULL),
-		snapshot_tmp_(NULL),
-		last_snapshot_index_(0),
-		last_snapshot_term_(0),
-		max_log_size_(4 * 1024 * 1024),
-		max_log_count_(5),
-		compacting_log_(false),
-		election_timer_(*this),
-		log_compaction_worker_(*this),
-		replicate_callback_(NULL)
+		  election_timeout_(3000),
+		  last_log_index_(0),
+		  committed_index_(0),
+		  applied_index_(0),
+		  current_term_(0),
+		  role_(E_FOLLOWER),
+		  snapshot_callback_(NULL),
+		  snapshot_info_(NULL),
+		  snapshot_tmp_(NULL),
+		  last_snapshot_index_(0),
+		  last_snapshot_term_(0),
+		  max_log_size_(4 * 1024 * 1024),
+		  max_log_count_(5),
+		  compacting_log_(false),
+		  election_timer_(*this),
+		  log_compaction_worker_(*this),
+		  replicate_callback_(NULL),
+	      apply_log_(*this)
 	{
 
 	}
@@ -88,15 +89,28 @@ namespace raft
 		return role_ == E_LEADER;
 	}
 
-	void node::bind_snapshot_callback(
-		snapshot_callback *callback)
+	void node::bind_snapshot_callback(snapshot_callback *callback)
 	{
 		snapshot_callback_ = callback;
 	}
-
+	void node::bind_replicate_callback(replicate_callback *callback)
+	{
+		replicate_callback_ = callback;
+	}
 	void node::set_snapshot_path(const std::string &path)
 	{
+		acl::lock_guard lg(metadata_locker_);
 		snapshot_path_ = path;
+
+		if(snapshot_path_.size())
+		{
+			char ch = snapshot_path_.back();
+			if(ch != '/'  && ch != '\\')
+			{
+				snapshot_path_.push_back('/');
+			}
+		}
+
 	}
 
 	void node::set_log_path(const std::string &path)
@@ -147,10 +161,13 @@ namespace raft
 		term_t		term = 0;
 		log_index_t index = 0;
 
+		if (!is_leader())
+			return { E_NO_LEADER,version()};
+		
 		if (!write_log(data, index, term))
 		{
 			logger_fatal("write_log error.%s", acl::last_serror());
-			return{ E_WRITE_LOG_ERROR, { 0, 0} };
+			return{ E_WRITE_LOG_ERROR, version()};
 		}
 
 		//todo make a replicate_cond_t pool for this;
@@ -158,7 +175,7 @@ namespace raft
 
 		cond->log_index_ = index;
 
-		add_waiter(cond);
+		add_replicate_cond(cond);
 
 		notify_peers_replicate_log();
 
@@ -188,7 +205,7 @@ namespace raft
 				result = status_t::E_TIMEOUT;
 
 				//timeout remove myself
-				remove_waiter(cond);
+				remove_replicate_cond(cond);
 			}
 			else if (!status)
 			{
@@ -208,7 +225,7 @@ namespace raft
 		}
 
 		delete cond;
-		return{ result, { index ,term } };
+		return{ result, version(index ,term ) };
 	}
 
 	std::string node::raft_id()const
@@ -272,12 +289,12 @@ namespace raft
 		role_ = _role;
 	}
 
-	void node::set_apply_index(log_index_t index)
+	void node::update_applied_index(log_index_t index)
 	{
 		acl::lock_guard lg(metadata_locker_);
 		applied_index_ = index;
 	}
-	raft::log_index_t node::last_log_index()
+	raft::log_index_t node::last_log_index() const
 	{
 		return log_manager_->last_index();
 	}
@@ -288,33 +305,33 @@ namespace raft
 		last_log_index_ = index;
 	}
 
-	void node::add_waiter(replicate_cond_t *waiter)
+	void node::add_replicate_cond(replicate_cond_t *cond)
 	{
-		acl::lock_guard lg(waiters_locker_);
+		acl::lock_guard lg(replicate_conds_locker_);
 
-		acl_pthread_mutex_lock(waiter->mutex_);
+		acl_pthread_mutex_lock(cond->mutex_);
 
-		waiter->it_ = replicate_conds_.insert(
-			std::make_pair(waiter->log_index_, waiter)).first;
+		cond->it_ = replicate_conds_.insert(
+			std::make_pair(cond->log_index_, cond)).first;
 
-		acl_pthread_mutex_unlock(waiter->mutex_);
+		acl_pthread_mutex_unlock(cond->mutex_);
 	}
-	void node::remove_waiter(replicate_cond_t *waiter)
+	void node::remove_replicate_cond(replicate_cond_t *cond)
 	{
-		acl::lock_guard lg(waiters_locker_);
+		acl::lock_guard lg(replicate_conds_locker_);
 
-		acl_pthread_mutex_lock(waiter->mutex_);
+		acl_pthread_mutex_lock(cond->mutex_);
 
-		if (waiter->it_ != replicate_conds_.end())
-			replicate_conds_.erase(waiter->it_);
-		waiter->it_ = replicate_conds_.end();
+		if (cond->it_ != replicate_conds_.end())
+			replicate_conds_.erase(cond->it_);
+		cond->it_ = replicate_conds_.end();
 
-		acl_pthread_mutex_unlock(waiter->mutex_);
+		acl_pthread_mutex_unlock(cond->mutex_);
 	}
 	bool node::build_replicate_log_request(
 		replicate_log_entries_request &requst,
 		log_index_t index,
-		int entry_size)
+		int entry_size) const
 	{
 		requst.set_leader_id(raft_id_);
 		requst.set_leader_commit(committed_index_);
@@ -501,7 +518,8 @@ namespace raft
 	void node::handle_new_term(term_t term)
 	{
 		logger("receive new term.%d", term);
-
+		set_current_term(term);
+		step_down();
 	}
 
 	bool node::get_snapshot(std::string &path) const
@@ -516,8 +534,7 @@ namespace raft
 		return false;
 	}
 
-	std::map<log_index_t, std::string>
-		node::scan_snapshots() const
+	std::map<log_index_t, std::string> node::scan_snapshots() const
 	{
 
 		acl::scan_dir scan;
@@ -612,50 +629,68 @@ namespace raft
 		logger_error("make_snapshot error.path:", snapshot_path_.c_str());
 		return false;
 	}
-	void node::do_compaction_log()
+	void node::do_compaction_log() const
 	{
 		bool do_make_snapshot = false;
 
 	try_again:
-		log_index_t index = 0;
-		std::string filepath;
 
-		if (get_snapshot(filepath))
+		int	delete_counts = 0;
+		log_index_t snapshot_index = 0;
+		std::string snapshot_filepath;
+
+		do
 		{
 			acl::ifstream	file;
 			version			ver;
 
-			if (!file.open_read(filepath.c_str()) || !read(file, ver))
+			if (!get_snapshot(snapshot_filepath))
+			{	
+				logger("not snapshot exist");
+				break;
+			}
+			if (file.open_read(snapshot_filepath.c_str()))
 			{
-				logger_error("snapshot file,error,%s", filepath.c_str());
+				snapshot_index = ver.index_;
 			}
 			else
-				index = ver.index_;
-		}
+			{
+				logger_error("open snapshot file,error,%s", 
+					snapshot_filepath.c_str());
+				break;
+			}
+			if (!read(file, ver))
+			{
+				logger_error("read snapshot vesion error");
+			}
 
-		std::map<log_index_t, log_index_t> log_infos =
+		} while (false);
+		
+		std::map<log_index_t, log_index_t> log_infos = 
 			log_manager_->logs_info();
 
-		acl_assert(log_infos.size());
-
-		int	count = 0;
-
-		for (std::map<log_index_t, log_index_t>::iterator it =
-			log_infos.begin(); it != log_infos.end(); ++it)
+		if(snapshot_index)
 		{
-			if (it->second < index)
-			{
-				count += log_manager_->discard_log(it->second);
+			std::map<log_index_t, log_index_t>::iterator it = 
+				log_infos.begin();
 
-				//delete half of logs
-				if (count >= log_infos.size() / 2)
+			for (;it != log_infos.end(); ++it)
+			{
+				if (it->second <= snapshot_index)
 				{
-					break;
+					delete_counts += log_manager_->discard_log(it->second);
+
+					//delete half of logs
+					if (delete_counts >= log_infos.size() / 2)
+					{
+						break;
+					}
 				}
 			}
 		}
+		
 
-		if (!count && !do_make_snapshot)
+		if (!delete_counts && !do_make_snapshot)
 		{
 			do_make_snapshot = true;
 			if (make_snapshot())
@@ -695,6 +730,12 @@ namespace raft
 
 	void node::election_timer_callback()
 	{
+
+		/*
+		 * this node lost heartbeat from leader
+		 * and it has not leader now.so this node should elect to be new leader
+		 */
+		set_leader_id("");
 
 		/*Rule For Followers:
 		* If election timeout elapses without receiving AppendEntries
@@ -778,7 +819,7 @@ namespace raft
 		}
 	}
 
-	bool node::handle_vote_request(const vote_request &req,
+	void node::handle_vote_request(const vote_request &req,
 		vote_response &resp)
 	{
 		resp.set_req_id(req.req_id());
@@ -838,12 +879,12 @@ namespace raft
 			{
 				ver.index_ = entry.index();
 				ver.term_ = entry.term();
-				if (!replicate_callback_->commit(entry.log_data(), ver))
+				if (!replicate_callback_->apply(entry.log_data(), ver))
 				{
 					logger_error("replicate_callback error");
 					return;
 				}
-				set_apply_index(i);
+				update_applied_index(i);
 				continue;
 			}
 			logger_error("read log error");
@@ -1236,11 +1277,12 @@ namespace raft
 	void node::notify_replicate_conds(log_index_t index, status_t status)
 	{
 
-		std::map<log_index_t, replicate_cond_t*>::iterator it;
+		std::map<log_index_t, replicate_cond_t*>::iterator it = 
+			replicate_conds_.begin();
 
-		acl::lock_guard lg(waiters_locker_);
+		acl::lock_guard lg(replicate_conds_locker_);
 
-		for (it = replicate_conds_.begin(); it != replicate_conds_.end();)
+		for (; it != replicate_conds_.end();)
 		{
 			if (it->first > index)
 			{
@@ -1304,5 +1346,23 @@ namespace raft
 			node_.do_apply_log();
 		}
 		return NULL;
+	}
+
+	node::log_compaction::log_compaction(node &_node)
+		:node_(_node)
+	{
+
+	}
+
+	void* node::log_compaction::run()
+	{
+		node_.do_compaction_log();
+		return NULL;
+	}
+
+	void node::log_compaction::do_compact_log()
+	{
+		set_detachable(true);
+		start();
 	}
 }

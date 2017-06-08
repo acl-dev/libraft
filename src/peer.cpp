@@ -191,6 +191,8 @@ namespace raft
 				//update next_index
 				next_index_ = ver.index_ + 1;
 				match_index_ = ver.index_;
+				logger("send snapshot done");
+				return true;
 			}
 		}
 		return false;

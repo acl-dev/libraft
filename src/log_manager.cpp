@@ -184,7 +184,7 @@ namespace raft
 		return infos;
 	}
 
-	int log_manager::discard_log(log_index_t log_start_index)
+	int log_manager::discard_log(log_index_t last_index)
 	{
 		typedef std::map<log_index_t, log*>::iterator iterator_t;
 
@@ -194,7 +194,7 @@ namespace raft
 
 		for(; it!= logs_.end(); ++it)
 		{
-			if (it->second->last_index() <= log_start_index)
+			if (it->second->last_index() <= last_index)
 			{
 				it->second->auto_delete(true);
 				it = logs_.erase(it);

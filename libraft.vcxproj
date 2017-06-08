@@ -114,7 +114,6 @@
     <ClInclude Include="include\common.hpp" />
     <ClInclude Include="include\log.hpp" />
     <ClInclude Include="include\log_manager.h" />
-    <ClInclude Include="include\log_compaction.h" />
     <ClInclude Include="include\mmap_log.hpp" />
     <ClInclude Include="include\node.h" />
     <ClInclude Include="include\peer.h" />
@@ -129,7 +128,6 @@
     <ClCompile Include="src\election_timer.cpp" />
     <ClCompile Include="src\log_manager.cpp" />
     <ClCompile Include="src\mmap_log.cpp" />
-    <ClCompile Include="src\log_compaction.cpp" />
     <ClCompile Include="src\node.cpp" />
     <ClCompile Include="src\peer.cpp" />
     <ClCompile Include="src\proto_gen\raft.pb.cc" />
