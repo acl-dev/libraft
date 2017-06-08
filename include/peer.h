@@ -23,21 +23,13 @@ namespace raft
 	private:
 		void notify_stop();
 
-		bool check_heartbeart() const;
-
-		bool check_do_replicate();
-		
 		void do_replicate();
 
 		bool do_install_snapshot();
 
-		bool check_do_vote();
+		void do_election()const;
 
-		bool check_stop();
-
-		void do_vote();
-
-		void to_sleep();
+		bool wait_event(int &event);
 
 		virtual void* run();
 
@@ -49,9 +41,7 @@ namespace raft
 		log_index_t match_index_;
 		log_index_t next_index_;
 
-		bool to_stop_; 
-		bool to_vote_;
-		bool to_replicate_;
+		int event_;
 
 		acl_pthread_cond_t *cond_;
 		acl_pthread_mutex_t *mutex_;
@@ -60,7 +50,7 @@ namespace raft
 		long long heart_inter_;
 		
 		acl::string replicate_service_path_;
-		acl::string vote_service_path_;
+		acl::string election_service_path_;
 		acl::string install_snapshot_service_path_;
 
 		acl::http_rpc_client *rpc_client_;

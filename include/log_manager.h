@@ -2,6 +2,7 @@
 
 namespace raft
 {
+	//todo add log cache
 	class log_manager
 	{
 	public:

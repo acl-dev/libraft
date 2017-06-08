@@ -1,19 +1,35 @@
 #include "raft.hpp"
 #define  __1MB__ 1024 * 1024
+#define TO_REPLICATE  0x01
+#define TO_ELECTION   0x02
+#define TO_STOP       0x04
+
+#define RESET_EVENT(e)		  e = 0
+#define SET_TO_REPLICATE(e)   e |= TO_REPLICATE
+#define SET_TO_ELECTION(e)    e |= TO_ELECTION
+#define SET_TO_STOP(e)        e |= TO_STOP
+
+#define RESET_TO_REPLICATE(e) e &= ~TO_REPLICATE
+#define RESET_TO_ELECTION(e)  e &= ~TO_ELECTION
+#define RESET_TO_STOP(e)      e &= ~TO_STOP
+
+#define IS_TO_REPLICATE(e)    (e & TO_REPLICATE)
+#define IS_TO_STOP(e)         (e & TO_STOP)
+#define IS_TO_ELECTION(e)     (e & TO_ELECTION)
+
+
 namespace raft
 {
 
 	peer::peer(node &_node, const std::string &peer_id)
 		:node_(_node),
+		peer_id_(peer_id),
 		match_index_(node_.last_log_index()),
 		next_index_(match_index_ + 1),
-		peer_id_(peer_id),
-		to_replicate_(false),
-		to_vote_(false),
+	    event_(0),
 		heart_inter_(3*1000),
 		rpc_faileds_(0),
-		req_id_(1),
-		to_stop_(false)
+		req_id_(1)
 	{
 		//server_id/raft/interface
 		replicate_service_path_.format(
@@ -22,7 +38,7 @@ namespace raft
 		install_snapshot_service_path_.format(
 			"/%s/raft/install_snapshot_req", peer_id_.c_str());
 
-		vote_service_path_.format(
+		election_service_path_.format(
 			"/%s/raft/vote_req", peer_id_.c_str());
 
 
@@ -37,7 +53,7 @@ namespace raft
 	}
 	peer::~peer()
 	{
-		if (!to_stop_)
+		if (!IS_TO_STOP(event_))
 		{
 			notify_stop();
 		}
@@ -45,10 +61,10 @@ namespace raft
 	void peer::notify_repliate()
 	{
 		acl_pthread_mutex_lock(mutex_);
-		if (!to_replicate_)
+		if (!IS_TO_REPLICATE(event_))
 		{
+			SET_TO_REPLICATE(event_);
 			acl_pthread_cond_signal(cond_);
-			to_replicate_ = true;
 		}
 		acl_pthread_mutex_unlock(mutex_);
 
@@ -57,10 +73,10 @@ namespace raft
 	void peer::notify_election()
 	{
 		acl_pthread_mutex_lock(mutex_);
-		if (!to_vote_)
+		if (!IS_TO_ELECTION(event_))
 		{
+			SET_TO_ELECTION(event_);
 			acl_pthread_cond_signal(cond_);
-			to_vote_ = true;
 		}
 		acl_pthread_mutex_unlock(mutex_);
 	}
@@ -82,27 +98,23 @@ namespace raft
 		return match_index_;
 	}
 
+	
+
 	void* peer::run()
 	{
-		do
+		int event = 0;
+		while(wait_event(event))
 		{
-			/*
-			 *check_heartbeart() for 
-			 *repeat during idle periods to prevent election timeouts (¡ì5.2)			 */
-			if ( (check_do_replicate() || check_heartbeart()))
+			if (IS_TO_REPLICATE(event) && node_.is_leader())
 			{
 				do_replicate();
 			}
 
-			if (check_do_vote())
+			if (IS_TO_REPLICATE(event))
 			{
-				do_vote();
+				do_election();
 			}
-			
-			to_sleep();
-
-		} while (!check_stop());
-
+		} 
 		return NULL;
 	}
 
@@ -256,7 +268,7 @@ namespace raft
 		}		
 	}
 
-	void peer::do_vote()
+	void peer::do_election()const
 	{
 		if (!node_.is_candicate())
 			return;
@@ -268,7 +280,7 @@ namespace raft
 		node_.build_vote_request(req);
 
 		status_t status = rpc_client_->proto_call(
-			vote_service_path_, 
+			election_service_path_, 
 			req, 
 			resp);
 
@@ -278,51 +290,10 @@ namespace raft
 				status.error_str_.c_str());
 			return;
 		}
-
 		node_.vote_response_callback(peer_id_, resp);
 	}
 
-	bool peer::check_do_replicate()
-	{
-		acl_pthread_mutex_lock(mutex_);
-		if (to_replicate_)
-		{
-			to_replicate_ = false;
-			acl_pthread_mutex_unlock(mutex_);
-			return true;
-		}
-		acl_pthread_mutex_unlock(mutex_);
-		return false;
-	}
-
-	bool peer::check_do_vote()
-	{
-		acl_pthread_mutex_lock(mutex_);		
-		if (to_vote_)
-		{
-			to_vote_ = false;
-			acl_pthread_mutex_unlock(mutex_);
-			return true;
-		}
-		acl_pthread_mutex_unlock(mutex_);
-		return false;
-	}
-
-	bool peer::check_heartbeart() const
-	{
-		timeval now;
-
-		gettimeofday(&now, NULL);
-		long long diff = now.tv_sec - last_replicate_time_.tv_sec;
-		diff *= 1000;
-		diff += (now.tv_usec - now.tv_usec) / 1000;
-
-		if (diff < heart_inter_)
-			return false;
-		return true;
-	}
-
-	void peer::to_sleep()
+	bool peer::wait_event(int &event)
 	{
 		timespec timeout;
 
@@ -333,16 +304,33 @@ namespace raft
 		timeout.tv_nsec += heart_inter_ % 1000 * 1000 * 1000;
 
 		acl_pthread_mutex_lock(mutex_);
-		acl_pthread_cond_timedwait(cond_, mutex_, &timeout);
+		if (!!event_)
+		{
+			event = event_;
+			RESET_EVENT(event_);
+			acl_pthread_mutex_unlock(mutex_);
+			return !IS_TO_STOP(event_);
+		}
+		int status = acl_pthread_cond_timedwait(cond_, mutex_, &timeout);
+		/*
+		* check_heartbeart() for repeat during idle 
+		* periods to prevent election timeouts (¡ì5.2)
+		* when cond timeout. it is time to send empty log		*/
+		if (status == ACL_ETIMEDOUT)
+			SET_TO_REPLICATE(event_);
+		event = event_;
+		RESET_EVENT(event_);
 		acl_pthread_mutex_unlock(mutex_);
+
+		return !IS_TO_STOP(event_);
 	}
 
 	void peer::notify_stop()
 	{
 		acl_pthread_mutex_lock(mutex_);
-		if (!to_stop_)
+		if (!IS_TO_STOP(event_))
 		{
-			to_stop_ = true;
+			SET_TO_STOP(event_);
 			acl_pthread_cond_signal(cond_);
 			acl_pthread_mutex_unlock(mutex_);
 			//wait for thread to eixt;
@@ -351,17 +339,4 @@ namespace raft
 		}
 		acl_pthread_mutex_unlock(mutex_);
 	}
-
-	bool peer::check_stop()
-	{
-		acl_pthread_mutex_lock(mutex_);
-		if (to_stop_)
-		{
-			acl_pthread_mutex_unlock(mutex_);
-			return true;
-		}
-		acl_pthread_mutex_unlock(mutex_);
-		return false;
-	}
-
 }

@@ -111,7 +111,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="include\apply_log.h" />
     <ClInclude Include="include\common.hpp" />
     <ClInclude Include="include\log.hpp" />
     <ClInclude Include="include\log_manager.h" />

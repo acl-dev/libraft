@@ -60,9 +60,6 @@
     <ClInclude Include="include\log_compaction.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="include\apply_log.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\raft.cpp">

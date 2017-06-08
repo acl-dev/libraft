@@ -254,7 +254,7 @@ namespace raft
 		return role_;
 	}
 
-	void node::update_vote_for(const std::string& vote_for)
+	void node::set_vote_for(const std::string& vote_for)
 	{
 		acl::lock_guard lg(metadata_locker_);
 		vote_for_ = vote_for;
@@ -272,6 +272,11 @@ namespace raft
 		role_ = _role;
 	}
 
+	void node::set_apply_index(log_index_t index)
+	{
+		acl::lock_guard lg(metadata_locker_);
+		applied_index_ = index;
+	}
 	raft::log_index_t node::last_log_index()
 	{
 		return log_manager_->last_index();
@@ -405,8 +410,6 @@ namespace raft
 			set_committed_index(majority_index);
 			notify_replicate_conds(majority_index);
 		}
-			
-
 	}
 
 	void node::build_vote_request(vote_request &req)
@@ -716,7 +719,7 @@ namespace raft
 		clear_vote_response();
 		set_role(role_t::E_CANDIDATE);
 		set_current_term(current_term() + 1);
-		update_vote_for(raft_id_);
+		set_vote_for(raft_id_);
 		notify_peers_to_election();
 		set_election_timer();
 	}
@@ -815,7 +818,7 @@ namespace raft
 		{
 			if (resp.log_ok() && vote_for().empty())
 			{
-				update_vote_for(req.candidate());
+				set_vote_for(req.candidate());
 				resp.set_vote_granted(true);
 			}
 		}
@@ -823,9 +826,11 @@ namespace raft
 		return true;
 	}
 
-	void node::apply_log(log_index_t leader_commit)
+	void node::do_apply_log()
 	{
-		for (log_index_t i = committed_index() + 1; i < leader_commit; ++i)
+		log_index_t index = committed_index();
+
+		for (log_index_t i = committed_index() + 1; i < index; ++i)
 		{
 			log_entry entry;
 			version ver;
@@ -838,7 +843,7 @@ namespace raft
 					logger_error("replicate_callback error");
 					return;
 				}
-				set_committed_index(i);
+				set_apply_index(i);
 				continue;
 			}
 			logger_error("read log error");
@@ -970,9 +975,9 @@ namespace raft
 			{
 				index = last_log_index();
 			}
-			apply_log(index);
+			set_committed_index(index);
+			apply_log_.do_apply();
 		}
-			
 
 		return true;
 	}
@@ -1244,5 +1249,60 @@ namespace raft
 			it->second->notify(status);
 			it = replicate_conds_.erase(it);
 		}
+	}
+
+	node::apply_log::apply_log(node& _node)
+		: node_(_node), 
+		 do_apply_(false)
+	{
+		mutex_ = new acl_pthread_mutex_t;
+		acl_pthread_mutex_init(mutex_, NULL);
+		cond_ = acl_pthread_cond_create();
+	}
+
+	node::apply_log::~apply_log()
+	{
+		acl_pthread_mutex_lock(mutex_);
+		to_stop_ = true;
+		acl_pthread_cond_signal(cond_);
+		acl_pthread_mutex_unlock(mutex_);
+		
+		//wait thread;
+		wait();
+
+		//release obj
+		acl_pthread_mutex_destroy(mutex_);
+		delete mutex_;
+		acl_pthread_cond_destroy(cond_);
+	}
+
+	void node::apply_log::do_apply()
+	{
+		acl_pthread_mutex_lock(mutex_);
+		do_apply_ = true;
+		acl_pthread_cond_signal(cond_);
+		acl_pthread_mutex_unlock(mutex_);
+	}
+
+	bool node::apply_log::wait_to_apply()
+	{
+		bool result = false;
+		
+		acl_pthread_mutex_lock(mutex_);
+		if(!do_apply_ && !to_stop_)
+			acl_pthread_cond_wait(cond_, mutex_);
+		result = do_apply_;
+		do_apply_ = false;
+		acl_pthread_mutex_unlock(mutex_);
+		return result && !to_stop_;
+	}
+
+	void* node::apply_log::run()
+	{
+		while(wait_to_apply())
+		{
+			node_.do_apply_log();
+		}
+		return NULL;
 	}
 }

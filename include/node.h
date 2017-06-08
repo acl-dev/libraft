@@ -97,7 +97,9 @@ namespace raft
 
 		std::string vote_for();
 
-		void update_vote_for(const std::string &vote_for);
+		void set_vote_for(const std::string &vote_for);
+
+		void set_apply_index(log_index_t index);
 
 		bool build_replicate_log_request(
 			replicate_log_entries_request &requst, 
@@ -162,7 +164,7 @@ namespace raft
 
 		void close_snapshot();
 
-		void apply_log(log_index_t leader_commit);
+		void do_apply_log();
 
 		bool handle_vote_request(const vote_request &req, vote_response &resp);
 
@@ -185,8 +187,25 @@ namespace raft
 
 		void notify_replicate_conds(log_index_t index, 
 			status_t = status_t::E_OK);
-		void update_peers_match_index(log_index_t index);
 
+		void update_peers_match_index(log_index_t index);
+	private:
+		class apply_log : private acl::thread
+		{
+		public:
+			apply_log(node &);
+			~apply_log();
+			void do_apply();
+			virtual void *run();
+		private:
+			bool wait_to_apply();
+			node &node_;
+			bool do_apply_;
+			bool to_stop_;
+			acl_pthread_mutex_t *mutex_;
+			acl_pthread_cond_t *cond_;
+		};
+	private:
 		log_manager *log_manager_;
 
 		unsigned int election_timeout_;
@@ -239,5 +258,7 @@ namespace raft
 		log_compaction log_compaction_worker_;
 
 		replicate_callback *replicate_callback_;
+
+		apply_log apply_log_;
 	};
 }
