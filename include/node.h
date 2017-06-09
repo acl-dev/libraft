@@ -1,14 +1,12 @@
 #pragma once
 namespace raft
 {
-	enum status_t
-	{
-		E_OK,
-		E_NO_LEADER,
-		E_WRITE_LOG_ERROR,
-		E_UNKNOWN,
-	};
-	struct replicate_cond_t;
+	
+	struct version;
+
+	inline bool write(acl::ostream &file, const version &ver);
+
+	inline bool read(acl::istream &file, version &ver);
 
 	struct version
 	{
@@ -19,12 +17,14 @@ namespace raft
 		term_t term_;
 	};
 
+	inline bool operator <(const version& left, const version& right);
+
 	struct apply_callback
 	{
 		virtual ~apply_callback() {};
 
 		/**
-		 * \brief 
+		 * \brief apply_callback operator() function
 		 * \param data from leader
 		 * \param ver user should save this version for doing snapshot 
 		 * in the future
@@ -32,9 +32,57 @@ namespace raft
 		 * \return return true when user apply data ok. and node will auto update
 		 * applied index. return false, node will invoke apply data again and again.
 		 */
-		virtual bool apply(const std::string& data, const version& ver) = 0;
+		virtual bool operator()(const std::string& data, const version& ver) = 0;
 	};
 
+
+	struct replicate_callback
+	{
+		enum status_t
+		{
+			E_OK,
+			E_NO_LEADER,
+			E_ERROR,
+		};
+		virtual ~replicate_callback(){}
+		virtual bool operator()(status_t status, version ver) = 0;
+	};
+
+	struct load_snapshot_callback
+	{
+		virtual ~load_snapshot_callback() {}
+
+		/**
+		 * \brief node maybe be lost some logs.and leader has no
+		 * the same logs to send to this node.leader will send
+		 * snapshot file to this node.and node invoke load_snapshot_callback
+		 * to give snapshot to user's state machine.user's state machine will
+		 * reload this snapshot.
+		 * \param filepath 
+		 * \return 
+		 */
+		virtual bool operator()(const std::string &filepath) = 0;
+	};
+
+	
+	struct make_snapshot_callback
+	{
+		virtual ~make_snapshot_callback() {}
+
+		/**
+		 * \brief node make snapshot to compact log.and this functor 
+		 * is make snapshot callnack handle.user must give this handle
+		 * to node.
+		 * \param path snapshot path.snapshot file will create in this path.
+		 * the path is the same to node set_snapshot_path(const std::string &path)
+		 * \param filepath is snapshot file path.and it's ext name must not be ".snapshot".
+		 * because "*.snapshot" is finished snapshot file path.
+		 * node will rename it's extension name to ".snapshot" when operator()(...)return true.
+		 * \return return true if do snapshot ok.return false mean something error happend 
+		 * ,making snapshot failed
+		 */
+		virtual bool operator()(const std::string &path, std::string &filepath) = 0;
+	};
 
 	/**
 	 * \brief raft node
@@ -44,35 +92,41 @@ namespace raft
 	public:
 		
 		node();
+		
 		/**
-		 * \brief replicate data to raft cluster .when N (N > nodes/2 ) 
-		 * nodes receive data,
-		 * it will return {E_OK,version{ log_index, log_term}}.  
-		 * log_index is index of 
-		 * the data in cluster.log_term is term of 
-		 * data in the cluster. user should safe the version(log_index,log_term)
-		 * for making snapshot in the further.
-		 * \param data : to replicate to raft cluster
-		 * \return if replicate done without timeout .
-		 * return {E_OK,{log_index, log_term}}
-		 * if is not leader,will return {E_NO_LEADER,{0, 0}}.
-		 * if write data to log failed,
-		 * it will return {E_WRITE_LOG_ERROR,{0, 0}}.
+		 * \brief to replicate data to cluster.when this node is leader.
+		 * if majorty of nodes recevie the data. replicate_callback will be
+		 * invoke. and user should apply data to state machine.
+		 * \param data the data to replicate to cluster
+		 * \param callback replicate result callback .when replicate done or 
+		 * something error happend.eg lost leadership
+		 * \return retrun false when this node is not leader or write log data 
+		 * error. therwise return true to user.
 		 */
-		std::pair<status_t, version> replicate(const std::string &data);
+		bool replicate(const std::string &data, replicate_callback *callback);
 
+		
 		/**
-		 * \brief interface for user to update applied_index.
-		 * if node is leader and user invoke replicate(...)
-		 * to replicate data to raft cluster and 
-		 * return {E_OK,{log_index, log_term}}.user user should apply 
-		 * data to state machine. and invoke update_applied_index(log_index).
-		 * otherwise replicate_callback will
-		 * be invoke to apply this data again and again.
-		 * 
-		 * \param index return from invoke replicate ,{E_OK, {index, _}};
+		 * \brief read data from node's log.
+		 * if state machine lost it's data. state machine could read data from
+		 * this interface.but the index of the data must less or eq ( <= ) 
+		 * applied index.if index is less then node log start index.it will
+		 * read data failed, at this time state machine should reload last
+		 * snapshot from node first. and read the data between 
+		 * [snapshot.version.index_,node.applied_index()].
+		 * \param index the index of the data to read
+		 * \param data buffer to store the data.
+		 * \return return true if read ok.otherwise will return false;
 		 */
-		void update_applied_index(log_index_t index);
+		bool read(log_index_t index, std::string &data);
+		/**
+		* \brief return applied log index.
+		* when state machine log data.
+		* it can call applied_index() to get
+		* applied index of log data. and reload snapshot,logs to recovery
+		* \return
+		*/
+		log_index_t applied_index();
 
 		/**
 		 * \brief check if leader now;
@@ -89,22 +143,31 @@ namespace raft
 
 		/**
 		 * \brief give snapshot_callback handle to node .
-		 * when this node do log compaction, snapshot_callback::make_snapshot(...)
-		 * will be invoke. and when this node receive a snapshot file, 
-		 * load_snapshot(...) will be invoke.
+		 * when leader send a snapshot file to this node .it will be invoke to user
+		 * and user should reset state machine, and reload snapshot file to state 
+		 * machine .
 		 * \param callback snapshot_callback obj
 		 */
-		void bind_snapshot_callback(snapshot_callback *callback);
+		void set_load_snapshot_callback(load_snapshot_callback *callback);
+		
+		/**
+		 * \brief set make snapshot callback handle.
+		 * when node to do log compaction,it will try to make a snapshot, and delete
+		 * useless log files. user must to invoke this interface to give a make snapshot
+		 * function handle to node.otherwise ,it will crush when do log compaction
+		 * \param callback make_snapshot_callback
+		 */
+		void set_make_snapshot_callback(make_snapshot_callback* callback);
 
 		/**
 		 * \brief bind replicate_callback handle to this node.
 		 * when node is not leader,it will receive data from leader
-		 * and replicate_callback::invoke will be invoke after leader has commited
-		 * the data
+		 * and apply_callback::apply(...) will be invoke after leader has commited
+		 * the index of data. and then in the callback function apply_callback::apply()
+		 * user can recevie the data. and apply to user state machine.
 		 * \param callback replicate_callback handle,
 		 */
-		void bind_apply_callback(apply_callback *callback);
-
+		void set_apply_callback(apply_callback *callback);
 
 		/**
 		 * \brief set snapshot path. and snapshot files will store in this path
@@ -242,6 +305,8 @@ namespace raft
 
 		void set_vote_for(const std::string &vote_for);
 
+		void set_applied_index(log_index_t index);
+
 		bool build_replicate_log_request(
 			replicate_log_entries_request &requst, 
 			log_index_t index,
@@ -312,19 +377,17 @@ namespace raft
 
 		void close_snapshot();
 
-		void do_apply_log();
+		void invoke_apply_callbacks();
 
-		void add_replicate_cond(replicate_cond_t *cond);
-
-		void remove_replicate_cond(replicate_cond_t *cond);
+		void invoke_replicate_callback(replicate_callback::status_t status);
 
 		void make_log_entry(const std::string &data, log_entry &entry);
 
 		bool write_log(const std::string &data, 
 			log_index_t &index, term_t &term);
 
-		void notify_replicate_conds(log_index_t index, 
-			status_t = status_t::E_OK);
+		void add_replicate_callback(const version& version, 
+									replicate_callback* callback);
 
 		void update_peers_match_index(log_index_t index);
 	private:
@@ -360,10 +423,12 @@ namespace raft
 			node &node_;
 		};
 	private:
+		typedef std::map<version, replicate_callback*> replicate_callbacks_t;
+		typedef std::map<std::string, vote_response>   vote_responses_t;
+
 		log_manager *log_manager_;
 
 		unsigned int election_timeout_;
-		log_index_t last_log_index_;
 		log_index_t committed_index_;
 		log_index_t applied_index_;
 		term_t		current_term_;
@@ -373,24 +438,23 @@ namespace raft
 		std::string vote_for_;
 		acl::locker	metadata_locker_;
 
-		typedef std::map<log_index_t, 
-			replicate_cond_t*> replicate_conds_t;
 
-		replicate_conds_t replicate_conds_;
-		acl::locker replicate_conds_locker_;
+		replicate_callbacks_t replicate_callbacks_;
+		acl::locker replicate_callbacks_locker_;
 
 
 		std::map<std::string, peer*> peers_;
 		acl::locker peers_locker_;
 
 
-		snapshot_callback	*snapshot_callback_;
-		std::string			snapshot_path_;
-		snapshot_info		*snapshot_info_;
-		acl::fstream		*snapshot_tmp_;
-		acl::locker			snapshot_locker_;
-		log_index_t			last_snapshot_index_;
-		term_t				last_snapshot_term_;
+		load_snapshot_callback	*load_snapshot_callback_;
+		make_snapshot_callback  *make_snapshot_callback_;
+		std::string			    snapshot_path_;
+		snapshot_info		    *snapshot_info_;
+		acl::fstream		    *snapshot_tmp_;
+		acl::locker			    snapshot_locker_;
+		log_index_t			    last_snapshot_index_;
+		term_t				    last_snapshot_term_;
 
 		std::string log_path_;
 		std::string metadata_path_;
@@ -401,8 +465,6 @@ namespace raft
 		bool		compacting_log_;
 		acl::locker compacting_log_locker_;
 
-		typedef std::map<std::string, 
-			vote_response> vote_responses_t;
 
 		vote_responses_t vote_responses_;
 		acl::locker		 vote_responses_locker_;

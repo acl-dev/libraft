@@ -196,9 +196,11 @@ namespace raft
 		{
 			if (it->second->last_index() <= last_index)
 			{
+				std::string filepath = it->second->file_path();
 				it->second->auto_delete(true);
 				it = logs_.erase(it);
 				del_count_++;
+				logger("log_manager discard %s log", filepath.c_str());
 			}
 			else
 				break;
