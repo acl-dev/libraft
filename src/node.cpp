@@ -15,6 +15,56 @@
 
 namespace raft
 {
+	const static std::string g_magic_string("raft-snapshot-head");
+
+	struct snapshot_head
+	{
+		std::string magic_string_;
+		snapshot_info info_;
+	};
+
+	bool write(acl::ostream &stream, const version &ver)
+	{
+		snapshot_head head;
+
+		head.magic_string_ = g_magic_string;
+		head.info_.set_last_included_term(ver.term_);
+		head.info_.set_last_snapshot_index(ver.index_);
+
+		if (!write(stream, head.magic_string_))
+			return false;
+
+		std::string buffer = head.info_.SerializeAsString();
+		if (!write(stream, buffer))
+			return false;
+
+		return true;
+	}
+
+	bool read(acl::istream &file, version &ver)
+	{
+		std::string magic_string;
+		std::string buffer;
+		snapshot_info info;
+
+		if (!read(file, magic_string) || magic_string != g_magic_string)
+		{
+			logger_error("read snapshot error,magic_string:%s",
+				magic_string.c_str());
+			return false;
+		}
+
+		if (!read(file, buffer) || !info.ParseFromString(buffer))
+		{
+			logger_error("read snapshot error");
+			return false;
+		}
+
+		ver.index_ = info.last_snapshot_index();
+		ver.term_ = info.last_included_term();
+		return true;
+	}
+
 	bool operator<(const version& left, const version& right)
 	{
 		return left.index_ < right.index_;
@@ -41,6 +91,16 @@ namespace raft
 		apply_callback_(NULL),
 		apply_log_(*this)
 	{
+	}
+
+	node::~node()
+	{
+		acl::lock_guard lg(peers_locker_);
+		std::map<std::string, peer *>::iterator it = peers_.begin();
+		for(; it != peers_.end(); ++it)
+		{
+			delete it->second;
+		}
 	}
 
 	bool node::replicate(const std::string& data, replicate_callback* callback)
@@ -179,6 +239,20 @@ namespace raft
 	{
 		acl::lock_guard lg(metadata_locker_);
 		return leader_id_;
+	}
+
+	void node::set_peers(const std::vector<std::string> &peers)
+	{
+		acl::lock_guard lg(peers_locker_);
+
+		for(size_t i = 0; i < peers.size(); ++i)
+		{
+			if(peers_.find(peers[i]) == peers_.end())
+			{
+				peer *_peer = new peer(*this, peers[i]);
+				peers_.insert(std::make_pair(peers[i], _peer));
+			}
+		}
 	}
 
 	void node::set_make_snapshot_callback(make_snapshot_callback* callback)
@@ -1289,6 +1363,11 @@ namespace raft
 
 	}
 
+	node::log_compaction::~log_compaction()
+	{
+
+	}
+
 	void* node::log_compaction::run()
 	{
 		node_.do_compaction_log();
@@ -1299,5 +1378,69 @@ namespace raft
 	{
 		set_detachable(true);
 		start();
+	}
+
+	node::election_timer::election_timer(node &_node)
+		:node_(_node),
+		cancel_(true)
+	{
+		start();
+	}
+
+	node::election_timer::~election_timer()
+	{
+		stop_ = true;
+		cancel_timer();
+		wait();
+	}
+
+	void node::election_timer::cancel_timer()
+	{
+		acl_pthread_mutex_lock(mutex_);
+		cancel_ = true;
+		delay_ = 1000 * 60;
+		acl_pthread_cond_signal(cond_);
+		acl_pthread_mutex_unlock(mutex_);
+	}
+
+	void node::election_timer::set_timer(unsigned int delay)
+	{
+		acl_pthread_mutex_lock(mutex_);
+		delay_ = delay;
+		cancel_ = false;
+		acl_pthread_cond_signal(cond_);
+		acl_pthread_mutex_unlock(mutex_);
+	}
+
+	void *node::election_timer::run()
+	{
+		while (!stop_)
+		{
+			timespec timeout;
+			timeval now;
+			gettimeofday(&now, NULL);
+			timeout.tv_sec = now.tv_sec;
+			timeout.tv_nsec = now.tv_usec * 1000;
+			timeout.tv_sec += delay_ / 1000;
+			timeout.tv_nsec += (delay_ % 1000) * 1000 * 1000;
+
+			acl_assert(!acl_pthread_mutex_lock(mutex_));
+
+			int status = acl_pthread_cond_timedwait(
+				cond_,
+				mutex_,
+				&timeout);
+
+			if (cancel_ || status != ACL_ETIMEDOUT)
+			{
+				acl_assert(!acl_pthread_mutex_unlock(mutex_));
+				continue;
+			}
+			acl_assert(!acl_pthread_mutex_unlock(mutex_));
+
+			node_.election_timer_callback();
+		}
+
+		return NULL;
 	}
 }

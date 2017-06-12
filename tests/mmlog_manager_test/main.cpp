@@ -9,7 +9,8 @@ log_manager *log_manager_;
 
 void create_log_manger()
 {
-	log_manager_ = new mmap_log_manager("mmap_log_manger_test/");
+	log_manager_ = 
+		new mmap_log_manager("mmap_log_manger_test/");
 }
 void close_log_manager()
 {
@@ -41,10 +42,42 @@ void read(int start, int end)
 		std::cout << entry.log_data().substr(1000)<< std::endl;
 	}
 }
+
+void read_all()
+{
+	std::vector<log_entry> entries;
+	log_manager_->read(log_manager_->start_index(),
+		1024 * 1024 * 1024, 
+		log_manager_->last_index(), 
+		entries);
+
+	std::cout << 
+		"all log entries count:"<<
+		entries.size() << std::endl;
+	
+	log_index_t pre_index = 0;
+	for(size_t i = 0; i < entries.size(); i++)
+	{
+		if (!pre_index)
+		{
+			pre_index = entries[i].index();
+		}
+		else
+		{
+			acl_assert(pre_index == entries[i].index() - 1);
+		}
+		/*std::cout << entries[i].log_data().substr(1000) << std::endl;*/
+
+		pre_index = entries[i].index();
+	}
+}
 void discard()
 {
-	std::map<log_index_t, log_index_t> log_infos = log_manager_->logs_info();
-	std::map<log_index_t, log_index_t>::iterator it = log_infos.begin();
+	std::map<log_index_t, log_index_t> log_infos = 
+		log_manager_->logs_info();
+
+	std::map<log_index_t, log_index_t>::iterator it = 
+		log_infos.begin();
 
 	int count = 0;
 	for (; it != log_infos.end(); ++it)
@@ -75,16 +108,26 @@ int main()
 	std::cout << log_manager_->log_count() << std::endl;;
 
 	//logs_info
-	std::map<log_index_t, log_index_t> log_infos = log_manager_->logs_info();
-	std::map<log_index_t, log_index_t>::iterator it = log_infos.begin();
+	std::map<log_index_t, log_index_t> log_infos = 
+		log_manager_->logs_info();
+
+	std::map<log_index_t, log_index_t>::iterator it = 
+		log_infos.begin();
 
 	for(; it!= log_infos.end(); ++it)
 	{
-		std::cout << "log_start: " << it->first << "    last_log: " << it->second << std::endl;
+		std::cout << 
+			"log_start: "<< 
+			it->first << 
+			"    last_log: "<< 
+			it->second << 
+			std::endl;
 	}
 
 	//read
-	read(log_manager_->start_index(), log_manager_->last_index() + 1);
+	/*read(log_manager_->start_index(), log_manager_->last_index() + 1)*/;
+
+	read_all();
 
 	//discard log
 	discard();

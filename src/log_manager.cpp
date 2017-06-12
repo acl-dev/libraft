@@ -62,7 +62,7 @@ namespace raft
 			log_index_t start_index = last_log_->start_index();
 			logs_.insert(std::make_pair(start_index, last_log_));
 		}
-		//update index ,term. 
+		//update begin ,term. 
 		last_index_ = index;
 		last_term_ = entry.term();
 
@@ -110,24 +110,22 @@ namespace raft
 		std::vector<log_entry> &entries)
 	{
 		int bytes = 0;
+		log_index_t begin = index;
 
 		do
 		{
-			if ( max_bytes - bytes <= 0 || max_count - entries.size() <= 0)
+			if ( max_bytes <= 0 || max_count <= 0 || begin > last_index())
 				break;
 
-			if(index > last_index())
-				break;
-
-			log *log_ = find_log(index);
+			log *log_ = find_log(begin);
 			
 			if (!log_)
 				break;
 
 			if (!log_->read(
-				index,
-				max_bytes - bytes,
-				max_count - static_cast<int>(entries.size()),
+				begin,
+				max_bytes,
+				max_count,
 				entries,
 				bytes))
 			{
@@ -136,6 +134,9 @@ namespace raft
 				break;
 			}
 			log_->dec_ref();
+			begin = index + static_cast<int>(entries.size());
+			max_count -= static_cast<int>(entries.size());
+			max_bytes -= bytes;
 		} while (true);
 
 		return !entries.empty();

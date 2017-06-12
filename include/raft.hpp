@@ -6,18 +6,14 @@
 #include "log.hpp"
 #include "log_manager.h"
 #include "mmap_log.hpp"
-#include "snapshot.h"
-#include "election_timer.h"
 #include "peer.h"
 #include "node.h"
-#include "node_service.h"
-#include "server.hpp"
 
 /*  raft paper https://raft.github.io/raft.pdf
  *
  *
  *
-  *
+ *
  *
  *
  */

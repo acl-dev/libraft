@@ -11,7 +11,7 @@
 namespace raft
 {
 
-	mmap_log::mmap_log(log_index_t pre_index, int file_size)
+	mmap_log::mmap_log(log_index_t last_index, int file_size)
 	{
 		data_buf_size_ = 0;
 		index_buf_size_ = 0;
@@ -21,8 +21,7 @@ namespace raft
 
 		index_buf_size_ = max_index_size(data_buf_size_);
 
-		last_index_ = pre_index;
-
+		last_index_ = last_index;
 		start_index_ = 0;
 		eof_ = false;
 		is_open_ = false;
@@ -258,8 +257,8 @@ namespace raft
 		{
 			log_entry entry;
 
-			if (buffer - data_buf_ >=
-				static_cast<int>(data_buf_size_ - one_index_size()))
+			if (buffer - data_buf_ >= static_cast<int>(
+				data_buf_size_ - one_index_size()))
 				break;
 
 			if (!get_entry(buffer, entry))
@@ -493,11 +492,17 @@ namespace raft
 	void mmap_log::reload_start_index()
 	{
 		unsigned char *buffer_ptr = index_buf_;
+
+		//read magic 
 		if (get_uint32(buffer_ptr) == __MAGIC_START__)
 		{
+			//read index
 			start_index_ = get_uint64(buffer_ptr);
+
 			//get offset
 			get_uint32(buffer_ptr);
+
+			//read magic 
 			if (get_uint32(buffer_ptr) != __MAGIC_END__)
 			{
 				logger_fatal("mmap_error");
@@ -591,7 +596,6 @@ namespace raft
 
 	log *mmap_log_manager::create(const std::string &filepath)
 	{
-
 		log *_log = new mmap_log(last_index_, log_size_);
 
 		if (!_log->open(filepath))

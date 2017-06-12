@@ -118,21 +118,15 @@
     <ClInclude Include="include\node.h" />
     <ClInclude Include="include\peer.h" />
     <ClInclude Include="include\proto_gen\raft.pb.h" />
-    <ClInclude Include="include\node_service.h" />
     <ClInclude Include="include\raft.hpp" />
-    <ClInclude Include="include\server.hpp" />
-    <ClInclude Include="include\snapshot.h" />
-    <ClInclude Include="include\election_timer.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\election_timer.cpp" />
     <ClCompile Include="src\log_manager.cpp" />
     <ClCompile Include="src\mmap_log.cpp" />
     <ClCompile Include="src\node.cpp" />
     <ClCompile Include="src\peer.cpp" />
     <ClCompile Include="src\proto_gen\raft.pb.cc" />
     <ClCompile Include="src\raft.cpp" />
-    <ClCompile Include="src\snapshot.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -13,7 +13,7 @@ namespace raft
 	 * next_index mean next index to replicate to the node
 	 * normal next_index = match_index + 1
 	 */
-	class peer :public acl::thread
+	class peer :private acl::thread
 	{
 	public:
 		peer(node &_node, const std::string &peer_id);

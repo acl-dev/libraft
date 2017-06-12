@@ -4,7 +4,12 @@ namespace raft
 	class mmap_log : public log
 	{
 	public:
-		mmap_log(log_index_t pre_index, int file_size);
+		/**
+		 * \brief mmap_log construct
+		 * \param last_index last log index 
+		 * \param file_size max file size.min is 64K
+		 */
+		explicit mmap_log(log_index_t last_index, int file_size);
 
 		virtual bool open(const std::string &filename);
 

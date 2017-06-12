@@ -57,6 +57,7 @@ namespace raft
 		{
 			notify_stop();
 		}
+		wait();
 	}
 	void peer::notify_repliate()
 	{

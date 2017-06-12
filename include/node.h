@@ -4,9 +4,23 @@ namespace raft
 	
 	struct version;
 
-	inline bool write(acl::ostream &file, const version &ver);
+	/**
+	 * \brief write a version abj to file
+	 * \param file file stream
+	 * \param ver version to write
+	 * \return retur true,if write ok,
+	 * otherwise return false;
+	 */
+	bool write(acl::ostream &file, const version &ver);
 
-	inline bool read(acl::istream &file, version &ver);
+	/**
+	 * \brief read version from file
+	 * \param file file to read
+	 * \param ver buffer to store data
+	 * \return return true if read ok,
+	 * otherwise return false;
+	 */
+	bool read(acl::istream &file, version &ver);
 
 	struct version
 	{
@@ -90,9 +104,9 @@ namespace raft
 	class node
 	{
 	public:
-		
 		node();
 		
+		~node();
 		/**
 		 * \brief to replicate data to cluster.when this node is leader.
 		 * if majorty of nodes recevie the data. replicate_callback will be
@@ -141,6 +155,11 @@ namespace raft
 		 */
 		std::string leader_id();
 
+		/**
+		 * \brief set peer id for this node
+		 * \param peers peer id vector 
+		 */
+		void set_peers(const std::vector<std::string> &peers);
 		/**
 		 * \brief give snapshot_callback handle to node .
 		 * when leader send a snapshot file to this node .it will be invoke to user
@@ -273,11 +292,7 @@ namespace raft
 		 */
 		bool is_candicate();
 
-		log_index_t gen_log_index();
-
 		log_index_t last_log_index() const;
-
-		void set_last_log_index(log_index_t index);
 
 		log_index_t last_snapshot_index();
 
@@ -417,10 +432,30 @@ namespace raft
 		{
 		public:
 			explicit log_compaction(node &_node);
+			~log_compaction();
 			void do_compact_log();
 		private:
 			virtual void* run();
 			node &node_;
+		};
+
+		class election_timer : acl::thread
+		{
+		public:
+			election_timer(node &_node);
+
+			~election_timer();
+
+			void set_timer(unsigned int delays_mills);
+			void cancel_timer();
+		private:
+			virtual void* run();
+			node &node_;
+			bool cancel_;
+			bool stop_;
+			unsigned int delay_;
+			acl_pthread_mutex_t *mutex_;
+			acl_pthread_cond_t *cond_;
 		};
 	private:
 		typedef std::map<version, replicate_callback*> replicate_callbacks_t;

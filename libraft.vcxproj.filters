@@ -24,9 +24,6 @@
     <ClInclude Include="include\raft.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="include\server.hpp">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="include\node.h">
       <Filter>头文件</Filter>
     </ClInclude>
@@ -48,15 +45,6 @@
     <ClInclude Include="include\log_manager.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="include\node_service.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="include\snapshot.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="include\election_timer.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\raft.cpp">
@@ -71,16 +59,10 @@
     <ClCompile Include="src\node.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="src\snapshot.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
     <ClCompile Include="src\log_manager.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="src\mmap_log.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="src\election_timer.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
