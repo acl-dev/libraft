@@ -7,6 +7,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libraft", "libraft.vcxproj"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mmlog_test", "tests\mmlog_test\mmlog_test.vcxproj", "{23308DF5-94B1-48DB-9E45-EF232E3D0B8F}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mmlog_manager_test", "tests\mmlog_manager_test\mmlog_manager_test.vcxproj", "{ED30F3F1-9C60-43A2-A041-9339CA38AB82}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -31,6 +33,14 @@ Global
 		{23308DF5-94B1-48DB-9E45-EF232E3D0B8F}.Release|x64.Build.0 = Release|x64
 		{23308DF5-94B1-48DB-9E45-EF232E3D0B8F}.Release|x86.ActiveCfg = Release|Win32
 		{23308DF5-94B1-48DB-9E45-EF232E3D0B8F}.Release|x86.Build.0 = Release|Win32
+		{ED30F3F1-9C60-43A2-A041-9339CA38AB82}.Debug|x64.ActiveCfg = Debug|x64
+		{ED30F3F1-9C60-43A2-A041-9339CA38AB82}.Debug|x64.Build.0 = Debug|x64
+		{ED30F3F1-9C60-43A2-A041-9339CA38AB82}.Debug|x86.ActiveCfg = Debug|Win32
+		{ED30F3F1-9C60-43A2-A041-9339CA38AB82}.Debug|x86.Build.0 = Debug|Win32
+		{ED30F3F1-9C60-43A2-A041-9339CA38AB82}.Release|x64.ActiveCfg = Release|x64
+		{ED30F3F1-9C60-43A2-A041-9339CA38AB82}.Release|x64.Build.0 = Release|x64
+		{ED30F3F1-9C60-43A2-A041-9339CA38AB82}.Release|x86.ActiveCfg = Release|Win32
+		{ED30F3F1-9C60-43A2-A041-9339CA38AB82}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

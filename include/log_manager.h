@@ -10,6 +10,8 @@ namespace raft
 		
 		virtual ~log_manager();
 
+		void reload_logs();
+
 		log_index_t write(const log_entry &entry);
 		
 		bool read(log_index_t index, int max_bytes,int max_count,
@@ -41,8 +43,6 @@ namespace raft
 		virtual log *create(const std::string &filepath) = 0;
 
 		log *find_log(log_index_t index);
-
-		void reload_logs();
 
 		std::string		path_;
 		int				log_size_;

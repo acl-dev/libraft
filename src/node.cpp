@@ -23,7 +23,6 @@ namespace raft
 	node::node()
 		: log_manager_(NULL),
 		election_timeout_(3000),
-		last_log_index_(0),
 		committed_index_(0),
 		applied_index_(0),
 		current_term_(0),
@@ -149,7 +148,7 @@ namespace raft
 				logger_error("open_read error.%s", filepath.c_str());
 				return;
 			}
-			if (!read(file, ver))
+			if (!raft::read(file, ver))
 			{
 				logger_error("read version error");
 				return;
@@ -246,12 +245,6 @@ namespace raft
 	raft::log_index_t node::last_log_index() const
 	{
 		return log_manager_->last_index();
-	}
-
-	void node::set_last_log_index(log_index_t index)
-	{
-		acl::lock_guard lg(metadata_locker_);
-		last_log_index_ = index;
 	}
 
 	bool node::build_replicate_log_request(
@@ -488,7 +481,7 @@ namespace raft
 						acl::last_serror());
 					continue;
 				}
-				if (!read(file, ver))
+				if (!raft::read(file, ver))
 				{
 					logger_error("read_version file.%s",
 						filepath);
@@ -586,7 +579,7 @@ namespace raft
 					snapshot_filepath.c_str());
 				break;
 			}
-			if (!read(file, ver))
+			if (!raft::read(file, ver))
 			{
 				logger_error("read snapshot vesion error");
 			}
@@ -1045,7 +1038,7 @@ namespace raft
 		std::string filepath = snapshot_tmp_->file_path();
 
 		acl_assert(snapshot_tmp_->fseek(0, SEEK_SET) != -1);
-		if (!read(*snapshot_tmp_, ver))
+		if (!raft::read(*snapshot_tmp_, ver))
 		{
 			logger_error("read snapshot file error.path :%s",
 				snapshot_tmp_->file_path());
@@ -1062,7 +1055,7 @@ namespace raft
 			version temp_ver;
 
 			acl_assert(file.open_read(temp.c_str()));
-			acl_assert(read(file, temp_ver));
+			acl_assert(raft::read(file, temp_ver));
 			file.close();
 			if (ver.index_ < temp_ver.index_ || ver.term_ < temp_ver.term_)
 			{
@@ -1170,11 +1163,6 @@ namespace raft
 		return true;
 	}
 
-	log_index_t node::gen_log_index()
-	{
-		acl::lock_guard lg(metadata_locker_);
-		return ++last_log_index_;
-	}
 	log_index_t node::last_snapshot_index()
 	{
 		acl::lock_guard lg(metadata_locker_);
@@ -1201,7 +1189,6 @@ namespace raft
 	{
 		term_t term = current_term();
 
-		entry.set_index(gen_log_index());
 		entry.set_term(term);
 		entry.set_log_data(data);
 		entry.set_type(log_entry_type::e_raft_log);

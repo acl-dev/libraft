@@ -30,8 +30,8 @@ namespace raft
 
 		virtual std::string file_path();
 
-	private:
 		~mmap_log();
+	private:
 
 		virtual void close();
 
@@ -53,7 +53,7 @@ namespace raft
 
 		static void *open_mmap(ACL_FILE_HANDLE fd, size_t maxlen);
 
-		static void close_mmap(void *map);
+		static void close_mmap(void *map, size_t map_size);
 
 		bool is_open_;
 		bool eof_;

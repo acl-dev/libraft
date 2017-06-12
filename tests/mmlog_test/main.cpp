@@ -1,7 +1,7 @@
 #include <string>
 #include <iostream>
 
-/*#include "raft.hpp"
+#include "raft.hpp"
 
 using namespace raft;
 
@@ -46,7 +46,8 @@ void test_write(mmap_log &log)
 }
 int main()
 {
-	mmap_log log;
+	acl::log::stdout_open(true);
+	mmap_log log(0,1000);
 	const char *filepath = "mmap.log";
 	
 	bool exist = acl_file_size(filepath) != -1;
@@ -59,22 +60,9 @@ int main()
 	else
 	{
 		test_write(log);
+		test_read(log);
 	}
-	acl_assert(log.close());
-
-	return 0;
-}
-
-*/
-
-int main()
-{
-	std::string filepath = "hello.snapshot";
-
-	auto pos = filepath.find_last_of('.');
-	auto name = filepath.substr(0, pos);
-
-	std::cout << name << std::endl;
+	log.auto_delete(true);
 
 	return 0;
 }

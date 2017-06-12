@@ -30,7 +30,7 @@ namespace raft
 		
 		/**
 		 * \brief write a log_entry to log file
-		 * \param entry log_entry
+		 * \param entry log_entry. 
 		 * \return return log index ( > 0) if write ok.otherwise return 0;
 		 */
 		virtual log_index_t write(const log_entry &entry) = 0;
@@ -132,7 +132,7 @@ namespace raft
 		/**
 		 * \brief log use ref to manager live time.
 		 * dec_ref() invoke ,ref = ref -1, if ref ==0
-		 * it will invoke close() ,and delete itself
+		 * it will invoke close_log_manager() ,and delete itself
 		 */
 		void dec_ref()
 		{
@@ -162,14 +162,14 @@ namespace raft
 		 */
 		virtual ~log() {};
 		/**
-		 * \brief when log to to closed,it will invote to close(),
+		 * \brief when log to to closed,it will invote to close_log_manager(),
 		 * and in the function, it will relase resources,eg:delete file,
 		 * release memory...
 		 */
 		virtual void close() = 0;
 
 		/**
-		 * \brief true if auto delete file,when close() be invoked
+		 * \brief true if auto delete file,when close_log_manager() be invoked
 		 */
 		bool auto_delete_;
 

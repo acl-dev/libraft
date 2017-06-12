@@ -60,7 +60,7 @@ namespace raft
 		}
 
 		data_buf_ = data_wbuf_ =
-			(unsigned char*)open_mmap(fd, file_size);
+			(unsigned char*)open_mmap(fd, data_buf_size_);
 
 		if (!data_buf_)
 		{
@@ -73,24 +73,24 @@ namespace raft
 		}
 		acl_file_close(fd);
 
-		std::string index_filepath = filepath + __INDEX__EXT__;
+		index_filepath_ = filepath + __INDEX__EXT__;
 
-		file_size = acl_file_size(index_filepath.c_str());
+		file_size = acl_file_size(index_filepath_.c_str());
 		if (file_size == -1)//not exist
 			file_size = index_buf_size_;
 		else
 			index_buf_size_ = file_size;
 
-		fd = acl_file_open(index_filepath.c_str(),
+		fd = acl_file_open(index_filepath_.c_str(),
 			O_RDWR | O_CREAT,
 			0600);
 
 		if (fd == ACL_FILE_INVALID)
 		{
 			logger_error("open %s error %s\r\n",
-				index_filepath.c_str(), acl_last_serror());
+				index_filepath_.c_str(), acl_last_serror());
 
-			close_mmap(data_buf_);
+			close_mmap(data_buf_, data_buf_size_);
 			data_buf_ = data_wbuf_ = NULL;
 			return false;
 		}
@@ -103,10 +103,10 @@ namespace raft
 		{
 			logger_error("acl_vstring_mmap_alloc"
 				" %s error %s\r\n",
-				index_filepath.c_str(),
+				index_filepath_.c_str(),
 				acl_last_serror());
 
-			close_mmap(data_buf_);
+			close_mmap(data_buf_, data_buf_size_);
 			data_buf_ = data_wbuf_ = NULL;
 			return false;
 		}
@@ -123,19 +123,23 @@ namespace raft
 	void mmap_log::close()
 	{
 		if (data_buf_)
-			close_mmap(data_buf_);
+			close_mmap(data_buf_, data_buf_size_);
 		if (index_buf_)
-			close_mmap(index_buf_);
+			close_mmap(index_buf_, index_buf_size_);
 
 		if (auto_delete())
 		{
 			if (remove(data_filepath_.c_str()) != 0)
-				logger_error("delete file error.%s",
-					data_filepath_.c_str());
+				logger_error("delete file error log filepath: %s"
+					", error str:%s",
+					data_filepath_.c_str(),
+					acl::last_serror());
 
 			if (remove(index_filepath_.c_str()))
-				logger_error("delete file error.%s",
-					index_filepath_.c_str());
+				logger_error("delete file error ,index filepath: %s, "
+					"error str:%s",
+					index_filepath_.c_str(),
+					acl::last_serror());
 		}
 		is_open_ = false;
 	}
@@ -156,9 +160,11 @@ namespace raft
 			eof_ = true;
 			return 0;
 		}
-		const_cast<log_entry&>(entry).set_index(index);
+		log_entry &entry2 = const_cast<log_entry &>(entry);
+		entry2.set_index(index);
+
 		put_uint32(data_wbuf_, __MAGIC_START__);
-		put_message(data_wbuf_, entry);
+		put_message(data_wbuf_, entry2);
 		put_uint32(data_wbuf_, __MAGIC_END__);
 
 		put_uint32(index_wbuf_, __MAGIC_START__);
@@ -558,19 +564,22 @@ namespace raft
 		if (!data)
 			logger_error("MapViewOfFile error: %s",
 				acl_last_serror());
+
+		acl_assert(CloseHandle(hmap));
 #else
 		logger_error("%s: not supported yet!", __FUNCTION__);
 #endif
 		return data;
 	}
 
-	void mmap_log::close_mmap(void *map)
+	void mmap_log::close_mmap(void *map, size_t map_size)
 	{
 #if defined (_WIN32) || defined(_WIN64)
-		FlushViewOfFile(map, 0);
-		UnmapViewOfFile(map);
+		(void)map_size;
+		acl_assert(FlushViewOfFile(map, 0));
+		acl_assert(UnmapViewOfFile(map));
 #elif defined (ACL_UNIX)
-		unmap(map, max_index_size_);
+		unmap(map, map_size);
 #endif
 	}
 
@@ -589,6 +598,7 @@ namespace raft
 		{
 			logger_error("mmap_log open error,%s",
 				filepath.c_str());
+			_log->dec_ref();
 			return NULL;
 		}
 		return _log;

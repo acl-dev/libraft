@@ -126,16 +126,16 @@ namespace raft
 
 	inline void put_message(unsigned char *&buffer_, const google::protobuf::Message &msg)
 	{
-		size_t len = get_sizeof(msg);
-		put_uint32(buffer_, (unsigned int)len);
-		acl_assert(msg.SerializeToArray(buffer_, (int)len));
+		size_t len = msg.ByteSizeLong();
+		put_uint32(buffer_, static_cast<unsigned int>(len + sizeof(int)));
+		acl_assert(msg.SerializeToArray(buffer_, static_cast<int>(len)));
 		buffer_ += len;
 	}
 	
 	inline bool get_message(unsigned char *&buffer_, google::protobuf::Message &entry)
 	{
-		unsigned int len = get_uint32(buffer_);
-		bool rc = entry.ParseFromArray(buffer_, len);
+		unsigned int len = get_uint32(buffer_) - sizeof(int);
+		bool rc = entry.ParseFromArray(buffer_, static_cast<int>(len));
 		buffer_ += len;
 		return rc;
 	}
@@ -147,10 +147,10 @@ namespace raft
 		unsigned char len[sizeof(int)];
 		unsigned char *plen = len;
 
-		put_uint32(plen, (unsigned int)data.size());
+		put_uint32(plen, static_cast<unsigned int>(data.size()));
 		if (_stream.write(len, sizeof(int)) != sizeof(int))
 			return false;
-		if (_stream.write(data.c_str(), data.size()) != (int)data.size())
+		if (_stream.write(data.c_str(), data.size()) != static_cast<int>(data.size()))
 			return false;
 		return true;
 	}

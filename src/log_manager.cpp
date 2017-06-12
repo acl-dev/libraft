@@ -10,15 +10,13 @@ namespace raft
 	log_manager::log_manager(const std::string &path) 
 		:path_(path)
 	{
-		if (path_.back() != '/' ||
-			path_.back() != '\\')
+		if (path_.back() != '/' && path_.back() != '\\')
 			path_.push_back('/');
 
 		log_size_	= 4 * 1024 * 1024;
 		last_index_ = 0;
 		last_log_	= NULL;
 		last_term_	= 0;
-		reload_logs();
 	}
 
 	log_manager::~log_manager()
@@ -40,6 +38,9 @@ namespace raft
 
 		if (!last_log_ || (index = last_log_->write(entry)) == 0)
 		{
+			if (last_log_)
+				acl_assert(last_log_->eof());
+
 			acl::string filepath(path_.c_str());
 
 			filepath.format_append("%llu%s",last_index_ + 1, __LOG_EXT__);
@@ -48,7 +49,7 @@ namespace raft
 			if (!last_log_)
 			{
 				logger_error("create log error");
-				return false;
+				return 0;
 			}
 
 			if ((index = last_log_->write(entry)) == 0)
@@ -56,11 +57,10 @@ namespace raft
 				logger_error("write log error");
 				last_log_->dec_ref();
 				last_log_ = NULL;
-				return false;
+				return 0;
 			}
 			log_index_t start_index = last_log_->start_index();
 			logs_.insert(std::make_pair(start_index, last_log_));
-			return true;
 		}
 		//update index ,term. 
 		last_index_ = index;
@@ -198,6 +198,7 @@ namespace raft
 			{
 				std::string filepath = it->second->file_path();
 				it->second->auto_delete(true);
+				it->second->dec_ref();
 				it = logs_.erase(it);
 				del_count_++;
 				logger("log_manager discard %s log", filepath.c_str());
@@ -259,7 +260,7 @@ namespace raft
 
 		for (; it != logs_.end(); ++it)
 		{
-			delete it->second;
+			it->second->inc_ref();
 		}
 		logs_.clear();
 
@@ -275,7 +276,8 @@ namespace raft
 			if (acl_strrncasecmp(filepath, 
 				__LOG_EXT__, strlen(__LOG_EXT__)) == 0)
 			{
-				log *_log = create(filepath);
+				std::string logfile= std::string(filepath);
+				log *_log = create(logfile);
 				//delete empty log
 				if (_log->empty())
 				{
@@ -286,6 +288,10 @@ namespace raft
 				acl_assert(logs_.insert(
 					std::make_pair(_log->start_index(), _log)).second);
 			}
+		}
+		if(logs_.size())
+		{
+			last_index_ = logs_.rbegin()->second->last_index();
 		}
 	}
 
