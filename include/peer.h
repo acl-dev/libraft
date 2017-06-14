@@ -78,8 +78,8 @@ namespace raft
 
 		int event_;
 
-		acl_pthread_cond_t *cond_;
-		acl_pthread_mutex_t *mutex_;
+		acl_pthread_cond_t cond_;
+		acl_pthread_mutex_t mutex_;
 		
 		timeval last_replicate_time_;
 		long long heart_inter_;

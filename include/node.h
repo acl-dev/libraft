@@ -1,5 +1,6 @@
 #pragma once
 namespace raft
+
 {
 	
 	struct version;
@@ -290,7 +291,7 @@ namespace raft
 		 * \brief check is candicate
 		 * \return true if candicate,otherwise return false;
 		 */
-		bool is_candicate();
+		bool is_candidate();
 
 		log_index_t last_log_index() const;
 
@@ -421,8 +422,8 @@ namespace raft
 			node &node_;
 			bool do_apply_;
 			bool to_stop_;
-			acl_pthread_mutex_t *mutex_;
-			acl_pthread_cond_t *cond_;
+			acl_pthread_mutex_t mutex_;
+			acl_pthread_cond_t cond_;
 		};
 
 		/**
@@ -432,7 +433,7 @@ namespace raft
 		{
 		public:
 			explicit log_compaction(node &_node);
-			~log_compaction();
+			~log_compaction(){};
 			void do_compact_log();
 		private:
 			virtual void* run();
@@ -454,8 +455,8 @@ namespace raft
 			bool cancel_;
 			bool stop_;
 			unsigned int delay_;
-			acl_pthread_mutex_t *mutex_;
-			acl_pthread_cond_t *cond_;
+			acl_pthread_mutex_t mutex_;
+			acl_pthread_cond_t cond_;
 		};
 	private:
 		typedef std::map<version, replicate_callback*> replicate_callbacks_t;

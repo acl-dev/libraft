@@ -26,7 +26,7 @@ private:
 	void regist_service();
 
 	//raft from raft framework
-	bool load_snapshot(const std::string &filepath);
+	bool load_snapshot(const std::string &file_path);
 
 	bool make_snapshot(const std::string &path, std::string &filepath);
 

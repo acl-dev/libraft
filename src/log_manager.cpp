@@ -1,3 +1,5 @@
+#include <cstring>
+#include <map>
 #include "raft.hpp"
 
 #ifndef __LOG_EXT__ 
@@ -255,7 +257,7 @@ namespace raft
 		acl::lock_guard lg(locker_);
 
 		acl::scan_dir scan;
-		const char* filepath = NULL;
+		const char* file_path = NULL;
 
 		std::map<log_index_t, log*>::iterator it = logs_.begin();
 
@@ -272,12 +274,12 @@ namespace raft
 			return;
 		}
 
-		while ((filepath = scan.next_file(true)) != NULL)
+		while ((file_path = scan.next_file(true)) != NULL)
 		{
-			if (acl_strrncasecmp(filepath, 
+			if (acl_strrncasecmp(file_path,
 				__LOG_EXT__, strlen(__LOG_EXT__)) == 0)
 			{
-				std::string logfile= std::string(filepath);
+				std::string logfile= std::string(file_path);
 				log *_log = create(logfile);
 				//delete empty log
 				if (_log->empty())

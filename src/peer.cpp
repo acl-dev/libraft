@@ -1,5 +1,5 @@
 #include "raft.hpp"
-#define  __1MB__ 1024 * 1024
+#define  __1MB__      (1024 * 1024)
 #define TO_REPLICATE  0x01
 #define TO_ELECTION   0x02
 #define TO_STOP       0x04
@@ -8,10 +8,6 @@
 #define SET_TO_REPLICATE(e)   e |= TO_REPLICATE
 #define SET_TO_ELECTION(e)    e |= TO_ELECTION
 #define SET_TO_STOP(e)        e |= TO_STOP
-
-#define RESET_TO_REPLICATE(e) e &= ~TO_REPLICATE
-#define RESET_TO_ELECTION(e)  e &= ~TO_ELECTION
-#define RESET_TO_STOP(e)      e &= ~TO_STOP
 
 #define IS_TO_REPLICATE(e)    (e & TO_REPLICATE)
 #define IS_TO_STOP(e)         (e & TO_STOP)
@@ -41,14 +37,10 @@ namespace raft
 		election_service_path_.format(
 			"/%s/raft/vote_req", peer_id_.c_str());
 
-
-		acl_pthread_mutexattr_t attr;
-
 		//send heartbeat to sync log index first
-		cond_ = acl_thread_cond_create();
-		mutex_ = static_cast<acl_pthread_mutex_t*>(
-			acl_mymalloc(sizeof(acl_pthread_mutex_t)));
-		acl_pthread_mutex_init(mutex_, &attr);
+		acl_pthread_mutex_init(&mutex_, NULL);
+		acl_pthread_cond_init(&cond_, NULL);
+
 		start();
 	}
 	peer::~peer()
@@ -61,25 +53,25 @@ namespace raft
 	}
 	void peer::notify_repliate()
 	{
-		acl_pthread_mutex_lock(mutex_);
+		acl_pthread_mutex_lock(&mutex_);
 		if (!IS_TO_REPLICATE(event_))
 		{
 			SET_TO_REPLICATE(event_);
-			acl_pthread_cond_signal(cond_);
+			acl_pthread_cond_signal(&cond_);
 		}
-		acl_pthread_mutex_unlock(mutex_);
+		acl_pthread_mutex_unlock(&mutex_);
 
 	}
 
 	void peer::notify_election()
 	{
-		acl_pthread_mutex_lock(mutex_);
+		acl_pthread_mutex_lock(&mutex_);
 		if (!IS_TO_ELECTION(event_))
 		{
 			SET_TO_ELECTION(event_);
-			acl_pthread_cond_signal(cond_);
+			acl_pthread_cond_signal(&cond_);
 		}
-		acl_pthread_mutex_unlock(mutex_);
+		acl_pthread_mutex_unlock(&mutex_);
 	}
 	void peer::set_next_index(log_index_t index)
 	{
@@ -142,8 +134,8 @@ namespace raft
 			logger_error("snapshot read version failed.");
 			return false;
 		}
-		size_t file_size =  file.fsize();
-		size_t offset = 0;
+		long long int file_size =  file.fsize();
+		long long int offset = 0;
 
 		while (node_.is_leader())
 		{
@@ -199,11 +191,12 @@ namespace raft
 		return false;
 	}
 	/*
-	 *If last log index ¡Ý nextIndex for a follower: send 
+	 *If last log index ï¿½ï¿½ nextIndex for a follower: send 
 	 *AppendEntries RPC with log entries starting at nextIndex 
-	 *If successful: update nextIndex and matchIndex for follower (¡ì5.3) 
+	 *If successful: update nextIndex and matchIndex for follower (ï¿½ï¿½5.3) 
 	 *If AppendEntries fails because of log inconsistency: 
-	 *decrement nextIndex and retry (¡ì5.3)	 */
+	 *decrement nextIndex and retry (ï¿½ï¿½5.3)
+	 */
 	void peer::do_replicate()
 	{
 		int entry_size = 1;
@@ -273,7 +266,7 @@ namespace raft
 
 	void peer::do_election()const
 	{
-		if (!node_.is_candicate())
+		if (!node_.is_candidate())
 			return;
 		typedef acl::http_rpc_client::status_t status_t;
 		vote_request req;
@@ -306,40 +299,41 @@ namespace raft
 		timeout.tv_sec += heart_inter_ / 1000;
 		timeout.tv_nsec += heart_inter_ % 1000 * 1000 * 1000;
 
-		acl_pthread_mutex_lock(mutex_);
-		if (!!event_)
+		acl_pthread_mutex_lock(&mutex_);
+		if (event_ != 0)
 		{
 			event = event_;
 			RESET_EVENT(event_);
-			acl_pthread_mutex_unlock(mutex_);
+			acl_pthread_mutex_unlock(&mutex_);
 			return !IS_TO_STOP(event_);
 		}
-		int status = acl_pthread_cond_timedwait(cond_, mutex_, &timeout);
+		int status = acl_pthread_cond_timedwait(&cond_, &mutex_, &timeout);
 		/*
-		* check_heartbeart() for repeat during idle 
-		* periods to prevent election timeouts (¡ì5.2)
-		* when cond timeout. it is time to send empty log		*/
+		* check_heartbeat() for repeat during idle
+		* periods to prevent election timeouts (5.2)
+		* when cond timeout. it is time to send empty log
+		*/
 		if (status == ACL_ETIMEDOUT)
 			SET_TO_REPLICATE(event_);
 		event = event_;
 		RESET_EVENT(event_);
-		acl_pthread_mutex_unlock(mutex_);
+		acl_pthread_mutex_unlock(&mutex_);
 
 		return !IS_TO_STOP(event_);
 	}
 
 	void peer::notify_stop()
 	{
-		acl_pthread_mutex_lock(mutex_);
+		acl_pthread_mutex_lock(&mutex_);
 		if (!IS_TO_STOP(event_))
 		{
 			SET_TO_STOP(event_);
-			acl_pthread_cond_signal(cond_);
-			acl_pthread_mutex_unlock(mutex_);
+			acl_pthread_cond_signal(&cond_);
+			acl_pthread_mutex_unlock(&mutex_);
 			//wait for thread to eixt;
 			wait();
 			return;
 		}
-		acl_pthread_mutex_unlock(mutex_);
+		acl_pthread_mutex_unlock(&mutex_);
 	}
 }

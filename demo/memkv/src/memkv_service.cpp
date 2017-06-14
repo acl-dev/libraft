@@ -134,7 +134,7 @@ bool replicate(const REQ& req,
 		return false;
 	}
 	std::string data = to_string(acl::gson(req));
-	data.append(get_req_flag(req));
+	data.push_back(get_req_flag(req));
 	replicate_future future;
 	if (!node->replicate(data, &future))
 	{
@@ -212,13 +212,16 @@ void memkv_service::init_raft_node()
 }
 void memkv_service::regist_service()
 {
-
+	server_.on_json("memkv/store/get",this, &memkv_service::get);
+	server_.on_json("memkv/store/set", this, &memkv_service::set);
+	server_.on_json("memkv/store/del", this, &memkv_service::del);
+	server_.on_json("memkv/store/exist", this, &memkv_service::exist);
 }
 //raft from raft framework
-bool memkv_service::load_snapshot(const std::string &filepath)
+bool memkv_service::load_snapshot(const std::string &file_path)
 {
 	acl::ifstream file;
-	if (!file.open_read(filepath.c_str()))
+	if (!file.open_read(file_path.c_str()))
 	{
 		logger_error("open file error");
 		return false;
@@ -260,8 +263,8 @@ bool memkv_service::load_snapshot(const std::string &filepath)
 	}
 	file.close();
 
-	logger("load_snapshot %s done.items:%llu", 
-		filepath.c_str(),items);
+	logger("load_snapshot %s done.items:%llu",
+		file_path.c_str(),items);
 
 	return true;
 }
