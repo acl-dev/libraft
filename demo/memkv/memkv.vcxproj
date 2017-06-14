@@ -18,6 +18,17 @@
       <Platform>x64</Platform>
     </ProjectConfiguration>
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="include\memkv.h" />
+    <ClInclude Include="include\memkv_proto.gson.h" />
+    <ClInclude Include="include\memkv_proto.h" />
+    <ClInclude Include="include\memkv_service.h" />
+    <ClInclude Include="include\raft_config.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\memkv_proto.gson.cpp" />
+    <ClCompile Include="src\memkv_service.cpp" />
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{C04BF288-E52E-4C04-8D8C-D50EF13B11C2}</ProjectGuid>
     <RootNamespace>memkv</RootNamespace>
@@ -110,10 +121,6 @@
       <OptimizeReferences>true</OptimizeReferences>
     </Link>
   </ItemDefinitionGroup>
-  <ItemGroup>
-    <ClInclude Include="memkv.h" />
-    <ClInclude Include="raft_config.h" />
-  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

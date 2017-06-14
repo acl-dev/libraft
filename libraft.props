@@ -12,7 +12,7 @@
   <PropertyGroup />
   <ItemDefinitionGroup>
     <ClCompile>
-      <AdditionalIncludeDirectories>$(libraft)include;$(libraft)include\proto_gen;$(acl)\lib_acl_cpp\include;$(acl)\lib_acl\include;$(acl)\lib_protocol\include;$(http_rpc)\include;$(protobuf)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)/include;$(libraft)include;$(libraft)include\proto_gen;$(acl)\lib_acl_cpp\include;$(acl)\lib_acl\include;$(acl)\lib_protocol\include;$(http_rpc)\include;$(protobuf)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
     </ClCompile>
     <Link>

@@ -15,11 +15,28 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="memkv.h">
+    <ClInclude Include="include\memkv_proto.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="raft_config.h">
+    <ClInclude Include="include\raft_config.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="include\memkv.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="include\memkv_proto.gson.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="include\memkv_service.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\memkv_proto.gson.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="src\memkv_service.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>
