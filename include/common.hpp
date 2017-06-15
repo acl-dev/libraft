@@ -141,32 +141,45 @@ namespace raft
 	}
 
 	//helper function for write read snapshot
-
-	inline bool write(acl::ostream &_stream, const std::string &data)
+	inline bool write(acl::ostream &_stream, unsigned int value)
 	{
 		unsigned char len[sizeof(int)];
 		unsigned char *plen = len;
 
-		put_uint32(plen, static_cast<unsigned int>(data.size()));
+		put_uint32(plen, value);
 		if (_stream.write(len, sizeof(int)) != sizeof(int))
-			return false;
-		if (_stream.write(data.c_str(), data.size()) != static_cast<int>(data.size()))
 			return false;
 		return true;
 	}
-
-	inline bool read(acl::istream &_stream, std::string &buffer)
+	inline bool write(acl::ostream &_stream, const std::string &data)
+	{
+		if (!write(_stream, static_cast<unsigned int>(data.size())))
+			return false;
+		if (_stream.write(data.c_str(), data.size()) != 
+			static_cast<int>(data.size()))
+			return false;
+		return true;
+	}
+	
+	inline bool read(acl::istream &_stream, unsigned int &value)
 	{
 		unsigned char len[sizeof(int)];
 		unsigned char *plen = len;
-		
+
 		if (_stream.read(len, sizeof(int)) != sizeof(int))
 			return false;
-
-		unsigned int size = get_uint32(plen);
+		value = get_uint32(plen);
+		return true;
+	}
+	
+	inline bool read(acl::istream &_stream, std::string &buffer)
+	{
+		unsigned int size = 0;
+		if (!read(_stream, buffer))
+			return false;
+		//empty string
 		if (size == 0)
 			return true;
-
 		buffer.resize(size);
 		return  _stream.read((char*)buffer.data(), size) == size;
 	}
