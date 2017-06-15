@@ -433,11 +433,14 @@ namespace raft
 		{
 		public:
 			explicit log_compaction(node &_node);
-			~log_compaction(){};
+			~log_compaction();
 			void do_compact_log();
 		private:
 			virtual void* run();
+			acl_pthread_mutex_t mutex_;
+			acl_pthread_cond_t cond_;
 			node &node_;
+			bool do_compact_log_;
 		};
 
 		class election_timer : acl::thread

@@ -2,6 +2,8 @@
 #include "raft_config.h"
 #include "memkv_proto.h"
 #include "memkv_proto.gson.h"
+#include "raft_config.h"
+#include "raft_config.gson.h"
 #include "memkv_service.h"
 
 typedef raft::replicate_callback::status_t replicate_status_t;
@@ -123,9 +125,9 @@ char get_req_flag(del_req &)
 //do replicate req. and set RESP::status
 //return true if replicate ok.otherwise return false
 template<class REQ, class RESP>
-bool replicate(const REQ& req, 
-	RESP &resp, 
-	raft::node *node, 
+bool replicate(const REQ& req,
+	RESP &resp,
+	raft::node *node,
 	raft::version &version)
 {
 	if (!check_leader())
@@ -164,12 +166,16 @@ memkv_service::memkv_service(acl::http_rpc_server &server)
 {
 	load_snapshot_callback_ = new memkv_load_snapshot_callback(this);
 	make_snapshot_callback_ = new memkv_make_snapshot_callback(this);
-	apply_callback_		    = new memkv_apply_callback(this);
+	apply_callback_ = new memkv_apply_callback(this);
+	node_ = new raft::node;
 }
 
 memkv_service::~memkv_service()
 {
-
+	delete node_;
+	delete load_snapshot_callback_;
+	delete make_snapshot_callback_;
+	delete apply_callback_;
 }
 
 void memkv_service::init()
@@ -181,11 +187,64 @@ void memkv_service::init()
 }
 void memkv_service::load_config()
 {
+	acl::ifstream file;
+	if (!file.open_read(cfg_file_path_.c_str()))
+	{
+		logger_fatal("open config file error."
+			"cfg_file_path_:%s "
+			"error:%s",
+			cfg_file_path_.c_str(),
+			acl::last_serror());
+		return;
+	}
 
+	acl::string data;
+	acl::string buf;
+	while (!file.eof())
+	{
+		if (file.read(buf))
+			data += buf;
+	}
+
+	std::pair<bool, std::string> ret = acl::gson(data, cfg_);
+	if (!ret.first)
+	{
+		logger_fatal("gson error.%s", ret.second.c_str());
+	}
 }
 void memkv_service::init_http_rpc_client()
 {
+	acl::http_rpc_client &rpc_client = 
+		acl::http_rpc_client::get_instance();
 
+	std::vector<std::string> service_paths;
+
+	service_paths.push_back("raft/replicate_log_req");
+	service_paths.push_back("raft/install_snapshot_req");
+	service_paths.push_back("raft/vote_req");
+
+	for (size_t i = 0; i < cfg_.peer_addrs.size(); i++)
+	{
+		for (size_t j = 0; j < service_paths.size(); j++)
+		{
+			acl::string service_path;
+			const char *addr = cfg_.peer_addrs[i].addr.c_str();
+
+			service_path.format("/%s/%s",
+				cfg_.peer_addrs[i].id.c_str(),
+				service_paths[j].c_str());
+			/*
+			rpc_client will manager connect_pool.
+			and it will auto reconnet
+			*/
+			rpc_client.add_service(addr, service_path);
+			logger("add service:"
+				"addr:%s "
+				"service_path:%s", 
+				addr, 
+				service_path.c_str());
+		}
+	}
 }
 void memkv_service::init_raft_node()
 {
@@ -197,9 +256,9 @@ void memkv_service::init_raft_node()
 	node_->set_snapshot_path(cfg_.snapshot_path);
 
 	std::vector<std::string> peers;
-	for (; size_t i = cfg_.peer_infos.size(); i++)
+	for (; size_t i = cfg_.peer_addrs.size(); i++)
 	{
-		peers.push_back(cfg_.peer_infos[i].id);
+		peers.push_back(cfg_.peer_addrs[i].id);
 	}
 	node_->set_peers(peers);
 
@@ -212,10 +271,31 @@ void memkv_service::init_raft_node()
 }
 void memkv_service::regist_service()
 {
-	server_.on_json("memkv/store/get",this, &memkv_service::get);
+	//regist service for user client
+	server_.on_json("memkv/store/get", this, &memkv_service::get);
 	server_.on_json("memkv/store/set", this, &memkv_service::set);
 	server_.on_json("memkv/store/del", this, &memkv_service::del);
 	server_.on_json("memkv/store/exist", this, &memkv_service::exist);
+
+	//regist service for raft peer
+	const char *id = cfg_.node_addr.id.c_str();
+	acl::string service_path;
+
+	//replicate req
+	service_path.format("/%s/raft/replicate_log_req", id);
+	server_.on_pb(service_path, node_,
+		&raft::node::handle_replicate_log_request);
+
+	//snapshot req
+	service_path.format("/%s/raft/install_snapshot_req", id);
+	server_.on_pb(service_path, node_,
+		&raft::node::handle_install_snapshot_requst);
+
+	//elelction req
+	service_path.format("/%s/raft/vote_req", id);
+	server_.on_pb(service_path, node_,
+		&raft::node::handle_vote_request);
+
 }
 //raft from raft framework
 bool memkv_service::load_snapshot(const std::string &file_path)
@@ -247,7 +327,7 @@ bool memkv_service::load_snapshot(const std::string &file_path)
 
 	//clear old data.because of newer snapshot.
 	store_.clear();
-	while(!file.eof())
+	while (!file.eof())
 	{
 		std::string key;
 		std::string value;
@@ -264,11 +344,11 @@ bool memkv_service::load_snapshot(const std::string &file_path)
 	file.close();
 
 	logger("load_snapshot %s done.items:%llu",
-		file_path.c_str(),items);
+		file_path.c_str(), items);
 
 	return true;
 }
-bool memkv_service::make_snapshot(const std::string &path, 
+bool memkv_service::make_snapshot(const std::string &path,
 	std::string &filepath)
 {
 	acl::string snapshot_path;
@@ -281,18 +361,18 @@ bool memkv_service::make_snapshot(const std::string &path,
 		".snapshot" is good snapshot file extension.
 	*/
 	snapshot_path.format_append("%llu.%llu.temp_snapshot");
-	
+
 	acl::ofstream file;
 	if (!file.open_trunc(snapshot_path.c_str()))
 	{
-		logger_error("open file error.%s",snapshot_path.c_str());
+		logger_error("open file error.%s", snapshot_path.c_str());
 		return false;
 	}
-	
+
 	acl::lock_guard lg(mem_store_locker_);
 
 	//write raft::version .and store item count
-	if (!raft::write(file,curr_ver_) || 
+	if (!raft::write(file, curr_ver_) ||
 		raft::write(file, (unsigned int)store_.size()))
 	{
 		goto failed;
@@ -301,7 +381,7 @@ bool memkv_service::make_snapshot(const std::string &path,
 		it != store_.end(); it++)
 	{
 		//write store key, and value
-		if (!raft::write(file, it->first) || 
+		if (!raft::write(file, it->first) ||
 			!raft::write(file, it->second))
 		{
 			goto failed;
@@ -317,10 +397,10 @@ failed:
 	return false;
 }
 /*
-	apply invoke from raft framework.it mean leader replicate 
+	apply invoke from raft framework.it mean leader replicate
 	data to this node, and data has be committed.
 */
-bool memkv_service::apply(const std::string& data, 
+bool memkv_service::apply(const std::string& data,
 	const raft::version& ver)
 {
 	acl::lock_guard lg(mem_store_locker_);
@@ -396,7 +476,6 @@ bool memkv_service::exist(const exist_req &req, exist_resp& resp)
 		resp.status = "yes";
 	else
 		resp.status = "no";
-
 	return true;
 }
 

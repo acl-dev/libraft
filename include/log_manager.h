@@ -3,6 +3,11 @@
 namespace raft
 {
 	//todo add log cache
+	typedef std::map<log_index_t, log_index_t> log_infos_t;
+
+	typedef typename std::map<log_index_t, 
+		log_index_t>::iterator log_infos_iter_t;
+
 	class log_manager
 	{
 	public:
@@ -29,7 +34,7 @@ namespace raft
 
 		term_t last_term();
 
-		std::map<log_index_t, log_index_t> logs_info();
+		log_infos_t logs_info();
 
 		int discard_log(log_index_t log_start_index);
 

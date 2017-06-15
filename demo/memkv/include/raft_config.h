@@ -2,7 +2,7 @@
 #include <string>
 #include <vector>
 
-struct peer_info
+struct addr_info
 {
 	std::string addr;
 	std::string id;
@@ -12,7 +12,12 @@ struct raft_config
 	std::string log_path;
 	std::string snapshot_path;
 	std::string metadata_path;
+	
 	int max_log_size;
+	//max log count of raft log
 	int max_log_count;
-	std::vector<peer_info> peer_infos;
+	//cluster addrs without myself
+	std::vector<addr_info> peer_addrs;
+	//myself addr
+	addr_info node_addr;
 };

@@ -174,7 +174,7 @@ namespace raft
 		return last_term_;
 	}
 
-	std::map<log_index_t, log_index_t> log_manager::logs_info()
+	log_infos_t log_manager::logs_info()
 	{
 		acl::lock_guard lg(locker_);
 

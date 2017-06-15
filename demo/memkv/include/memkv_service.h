@@ -1,6 +1,4 @@
 #pragma once
-
-
 class memkv_service :acl::service_base
 {
 public:
@@ -60,4 +58,7 @@ private:
 	memkv_store_t store_;
 	raft::version curr_ver_;
 	acl::locker mem_store_locker_;
+
+	//config file_path
+	std::string cfg_file_path_;
 };

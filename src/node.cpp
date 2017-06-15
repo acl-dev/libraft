@@ -65,7 +65,8 @@ namespace raft
 
 	bool operator<(const version& left, const version& right)
 	{
-		return left.index_ < right.index_;
+		return left.index_ < right.index_ || 
+			left.term_ < right.term_;
 	}
 
 	node::node()
@@ -128,11 +129,15 @@ namespace raft
 	bool node::read(log_index_t index, std::string& data)
 	{
 		log_entry log;
-		if (applied_index() < index)
+		log_index_t _applied_index = applied_index();
+		if (_applied_index < index)
 		{
 			logger_error("index error.index must not "
-				"> applied index.index:%llu,applied_index:%llu",
-				index, applied_index());
+				"> applied index."
+				"index:%llu ."
+				"applied_index:%llu",
+				index, 
+				_applied_index);
 			return false;
 		}
 			
@@ -151,7 +156,8 @@ namespace raft
 		return role_ == E_LEADER;
 	}
 
-	void node::set_load_snapshot_callback(load_snapshot_callback *callback)
+	void node::set_load_snapshot_callback(
+		load_snapshot_callback *callback)
 	{
 		load_snapshot_callback_ = callback;
 	}
@@ -203,7 +209,9 @@ namespace raft
 			acl::ifstream file;
 			if (!file.open_read(filepath.c_str()))
 			{
-				logger_error("open_read error.%s", filepath.c_str());
+				logger_error("open_read error."
+					"file path%s", 
+					filepath.c_str());
 				return;
 			}
 			if (!raft::read(file, ver))
@@ -253,7 +261,8 @@ namespace raft
 		}
 	}
 
-	void node::set_make_snapshot_callback(make_snapshot_callback* callback)
+	void node::set_make_snapshot_callback(
+		make_snapshot_callback* callback)
 	{
 		make_snapshot_callback_ = callback;
 	}
@@ -515,7 +524,8 @@ namespace raft
 
 	bool node::get_snapshot(std::string &path) const
 	{
-		std::map<log_index_t, std::string> snapshot_files_ = scan_snapshots();
+		std::map<log_index_t, std::string>
+			snapshot_files_ = scan_snapshots();
 
 		if (snapshot_files_.size())
 		{
@@ -525,7 +535,8 @@ namespace raft
 		return false;
 	}
 
-	std::map<log_index_t, std::string> node::scan_snapshots() const
+	std::map<log_index_t, std::string>
+		node::scan_snapshots() const
 	{
 
 		acl::scan_dir scan;
@@ -605,92 +616,101 @@ namespace raft
 	{
 		std::string filepath;
 		acl_assert(make_snapshot_callback_);
-		if ((*make_snapshot_callback_)(snapshot_path_, filepath))
+
+		if (!(*make_snapshot_callback_)(snapshot_path_, filepath))
 		{
-			std::string snapshot_file = filepath;
-			size_t pos = filepath.find_last_of('.');
-			if (pos != filepath.npos)
-			{
-				snapshot_file = filepath.substr(0, pos);
-			}
-			else
-			{
-				snapshot_file += __SNAPSHOT_EXT__;
-			}
-			if (rename(filepath.c_str(), snapshot_file.c_str()))
-			{
-				logger("make_snapshot done.");
-				return true;
-			}
-			logger_error("rename failed,%s", acl::last_serror());
+			logger_error("make_snapshot error.path:",
+				snapshot_path_.c_str());
+			return false;
 		}
-		logger_error("make_snapshot error.path:", snapshot_path_.c_str());
+
+		std::string snapshot_file = filepath;
+		size_t pos = filepath.find_last_of('.');
+		if (pos != filepath.npos)
+		{
+			snapshot_file = filepath.substr(0, pos);
+		}
+		else
+		{
+			snapshot_file += __SNAPSHOT_EXT__;
+		}
+
+		if (rename(filepath.c_str(), snapshot_file.c_str()) != 0)
+		{
+			logger_error("rename failed."
+				"last error:%s",
+				acl::last_serror());
+			
+		}
+		else
+		{
+			logger("make_snapshot done."
+				"file path:%s", 
+				snapshot_file.c_str());
+
+			return true;
+		}
+
+
 		return false;
 	}
 	void node::do_compaction_log() const
 	{
-		bool do_make_snapshot = false;
 
-	try_again:
-
-		int	count = 0;
-		log_index_t index = 0;
+	do_again:
 		std::string snapshot;
-
-        acl::ifstream	file;
-        version			ver;
         if (!get_snapshot(snapshot))
         {
-            logger("not snapshot exist");
-            break;
-        }
-        if (file.open_read(snapshot.c_str()))
-        {
-            index = ver.index_;
-        }
-        else
-        {
-            logger_error("open snapshot file,error,%s",
-                snapshot.c_str());
-            break;
-        }
-        if (!raft::read(file, ver))
-        {
-            logger_error("read snapshot vesion error");
-        }
-
-        if (index)
-		{
-			std::map<log_index_t, log_index_t> log_infos =
-				log_manager_->logs_info();
-
-			std::map<log_index_t, log_index_t>::iterator it =
-				log_infos.begin();
-
-			for (; it != log_infos.end(); ++it)
+			if (make_snapshot())
 			{
-				if (it->second <= index)
-				{
-                    count += log_manager_->discard_log(it->second);
-				}
-				//delete half of logs
-				if (count >= log_infos.size() / 2)
-				{
-					break;
-				}
+				goto do_again;
+			}
+			else
+			{
+				logger_error("make_snapshot failed.");
+				return;
 			}
 		}
 
-
-		if (!count && !do_make_snapshot)
+		acl::ifstream	file;
+		if (!file.open_read(snapshot.c_str()))
 		{
-			do_make_snapshot = true;
-			if (make_snapshot())
-				goto try_again;
-			else
-				logger_error("make_snapshot error");
+			logger_error("open file,error,%s", 
+				snapshot.c_str());
+			return;
 		}
 
+		version ver;
+		if (!raft::read(file, ver))
+		{
+			logger_error("read vesion error");
+			return;
+		}
+			
+		int	count = 0;
+		log_infos_t log_infos = log_manager_->logs_info();
+		log_infos_iter_t it = log_infos.begin();
+
+		for (; it != log_infos.end(); ++it)
+		{
+			if (it->second <= ver.index_)
+			{
+				count += log_manager_->discard_log(it->second);
+			}
+			//delete half of logs
+			if (count >= log_infos.size() / 2)
+			{
+				break;
+			}
+		}
+		if (!count)
+		{
+			if (make_snapshot())
+			{
+				goto do_again;
+			}
+		}
+		logger("log_compaction discard %d logs",count);
 	}
 
 	void node::set_committed_index(log_index_t index)
@@ -725,7 +745,8 @@ namespace raft
 
 		/*
 		 * this node lost heartbeat from leader
-		 * and it has not leader now.so this node should elect to be new leader
+		 * and it has not leader now.so this node 
+		 * should elect to be new leader
 		 */
 		set_leader_id("");
 
@@ -843,7 +864,9 @@ namespace raft
 
 		if (req.term() > current_term())
 		{
-			/*step down to follower then discover new node with higher term*/
+			/*step down to follower then discover 
+			new node with higher term*/
+
 			step_down();
 			set_current_term(req.term());
 		}
@@ -864,7 +887,8 @@ namespace raft
 	{
 		log_index_t commited = committed_index();
 
-		for (log_index_t index = applied_index() + 1; index <= commited; ++index)
+		for (log_index_t index = applied_index() + 1; 
+			index <= commited; ++index)
 		{
 			log_entry entry;
 			version ver;
@@ -874,7 +898,7 @@ namespace raft
 				ver.term_ = entry.term();
 				if (!(*apply_callback_)(entry.log_data(), ver))
 				{
-					logger_error("apply_callback::operator()() return error");
+					logger_error("apply_callback::operator() error");
 					return;
 				}
 				set_applied_index(index);
@@ -898,7 +922,7 @@ namespace raft
 			{
 				if (!(*(it->second))(status, it->first))
 				{
-					logger_error("replicate_callback::operator()() return false.error");
+					logger_error("replicate_callback::operator()() .error");
 					return;
 				}
 				set_applied_index(it->first.index_);
@@ -1133,9 +1157,10 @@ namespace raft
 			acl_assert(file.open_read(temp.c_str()));
 			acl_assert(raft::read(file, temp_ver));
 			file.close();
-			if (ver.index_ < temp_ver.index_ || ver.term_ < temp_ver.term_)
+
+			if (ver < temp_ver)
 			{
-				logger("snapshot_tmp is old.%s",
+				logger("snapshot_tmp(%s) is old",
 					filepath.c_str());
 				return;
 			}
@@ -1150,8 +1175,13 @@ namespace raft
 		/*save snapshot file*/
 		if (rename(filepath.c_str(), snapshot.c_str()) != 0)
 		{
-			logger_error("rename error.oldFilePath:%s,newFilePath:%s,%s",
-				filepath.c_str(), snapshot.c_str(), acl::last_serror());
+			logger_error("rename error."
+				"oldFilePath:%s, "
+				"newFilePath:%s, "
+				"error:%s",
+				filepath.c_str(), 
+				snapshot.c_str(), 
+				acl::last_serror());
 		}
 
 		/*it must be*/
@@ -1179,7 +1209,8 @@ namespace raft
 		 */
 		if (!(*load_snapshot_callback_)(snapshot))
 		{
-			logger_error("receive_snapshot_callback failed,filepath:%s ",
+			logger_error("receive_snapshot_callback "
+				"failed,filepath:%s ",
 				filepath.c_str());
 			return;
 		}
@@ -1355,14 +1386,39 @@ namespace raft
 	}
 
 	node::log_compaction::log_compaction(node &_node)
-		:node_(_node)
+		:node_(_node),
+		do_compact_log_(false)
 	{
+		acl_pthread_mutex_init(&mutex_, NULL);
+		acl_pthread_cond_init(&cond_, NULL);
+	}
 
+	node::log_compaction::~log_compaction()
+	{
+		acl_pthread_mutex_lock(&mutex_);
+		if (do_compact_log_)
+		{
+			acl_pthread_cond_wait(&cond_, &mutex_);
+		}
+		acl_pthread_mutex_unlock(&mutex_);
 	}
 
 	void* node::log_compaction::run()
 	{
+		//set status true
+		acl_pthread_mutex_lock(&mutex_);
+		do_compact_log_ = true;
+		acl_pthread_mutex_unlock(&mutex_);
+
+		//do log compaction
 		node_.do_compaction_log();
+
+		//notify waiter
+		acl_pthread_mutex_lock(&mutex_);
+		do_compact_log_ = false;
+		acl_pthread_cond_signal(&cond_);
+		acl_pthread_mutex_unlock(&mutex_);
+
 		return NULL;
 	}
 
@@ -1415,9 +1471,9 @@ namespace raft
 			timespec timeout;
 			timeval now;
 			gettimeofday(&now, NULL);
-			timeout.tv_sec = now.tv_sec;
-			timeout.tv_nsec = now.tv_usec * 1000;
-			timeout.tv_sec += delay_ / 1000;
+			timeout.tv_sec  =  now.tv_sec;
+			timeout.tv_nsec =  now.tv_usec * 1000;
+			timeout.tv_sec  += delay_ / 1000;
 			timeout.tv_nsec += (delay_ % 1000) * 1000 * 1000;
 
 			acl_assert(!acl_pthread_mutex_lock(&mutex_));

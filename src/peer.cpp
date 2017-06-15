@@ -45,10 +45,8 @@ namespace raft
 	}
 	peer::~peer()
 	{
-		if (!IS_TO_STOP(event_))
-		{
-			notify_stop();
-		}
+		//waitup thread 
+		notify_stop();
 		wait();
 	}
 	void peer::notify_repliate()
@@ -191,7 +189,7 @@ namespace raft
 		return false;
 	}
 	/*
-	 *If last log index �� nextIndex for a follower: send 
+	 *If last log index  nextIndex for a follower: send 
 	 *AppendEntries RPC with log entries starting at nextIndex 
 	 *If successful: update nextIndex and matchIndex for follower (��5.3) 
 	 *If AppendEntries fails because of log inconsistency: 
@@ -330,8 +328,6 @@ namespace raft
 			SET_TO_STOP(event_);
 			acl_pthread_cond_signal(&cond_);
 			acl_pthread_mutex_unlock(&mutex_);
-			//wait for thread to eixt;
-			wait();
 			return;
 		}
 		acl_pthread_mutex_unlock(&mutex_);

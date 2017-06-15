@@ -18,9 +18,6 @@
     <ClInclude Include="include\memkv_proto.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="include\raft_config.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="include\memkv.h">
       <Filter>头文件</Filter>
     </ClInclude>
@@ -30,12 +27,21 @@
     <ClInclude Include="include\memkv_service.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="include\raft_config.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="include\raft_config.gson.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\memkv_proto.gson.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="src\memkv_service.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="src\raft_config.gson.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
