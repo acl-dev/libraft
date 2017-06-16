@@ -278,7 +278,7 @@ namespace raft
 
         if (index < start_index() || index > last_index())
         {
-            logger_error("index error,%d", index);
+            logger_error("index error,%llu", index);
             return false;
         }
 		
@@ -410,7 +410,7 @@ namespace raft
         log_entry entry;
         entry.set_index(log_index_t (-1));
         entry.set_term(term_t (-1));
-        entry.set_type(log_entry_type::e_raft_log);
+        entry.set_type(e_raft_log);
         entry.set_log_data(std::string(" "));
 
         size_t one_entry_len = get_sizeof(entry) + sizeof(int) * 2;

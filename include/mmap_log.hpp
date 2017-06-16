@@ -91,6 +91,6 @@ namespace raft
 		* \param filepath mmap_log
 		* \return mmap_log if ok.or NULL
 		*/
-		virtual log *create(const std::string &filepath) override;
+		virtual log *create(const std::string &filepath);
 	};
 }

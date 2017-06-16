@@ -44,9 +44,9 @@ private:
 	bool del(const del_req &req, del_resp &resp);
 
 	//raft callback handles
-	memkv_load_snapshot_callback *load_snapshot_callback_;
-	memkv_make_snapshot_callback *make_snapshot_callback_;
-	memkv_apply_callback *apply_callback_;
+	struct memkv_load_snapshot_callback *load_snapshot_callback_;
+	struct memkv_make_snapshot_callback *make_snapshot_callback_;
+	struct memkv_apply_callback *apply_callback_;
 
 	//raft node
 	raft::node *node_;

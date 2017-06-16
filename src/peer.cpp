@@ -171,7 +171,7 @@ namespace raft
 			}
 			if (node_.current_term() < resp.term())
 			{
-				logger("recevie new term.%d",resp.term());
+				logger("recevie new term.%zd",resp.term());
 				node_.handle_new_term(resp.term());
 				return false;
 			}
@@ -211,7 +211,7 @@ namespace raft
 				entry_size))
 			{
 				logger("build_replicate_log_request "
-					"failed. next_index_:%d",
+					"failed. next_index_:%llu",
 					next_index_);
 				if (!do_install_snapshot())
 				{

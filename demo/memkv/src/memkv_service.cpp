@@ -1,7 +1,8 @@
-#include "raft.hpp"
-#include "raft_config.h"
+#include "acl_cpp/lib_acl.hpp"
+#include "lib_acl.h"
 #include "memkv_proto.h"
 #include "memkv_proto.gson.h"
+#include "raft.hpp"
 #include "raft_config.h"
 #include "raft_config.gson.h"
 #include "memkv_service.h"
@@ -56,14 +57,13 @@ public:
 	replicate_future()
 		:done_(false)
 	{
-		cond_ = acl_pthread_cond_create();
-		acl_assert(cond_);
+		acl_assert(acl_pthread_cond_init(&cond_, NULL) == 0);
 		acl_assert(acl_pthread_mutex_init(&mutex_, NULL) == 0);
 	}
 
 	~replicate_future()
 	{
-		acl_pthread_cond_destroy(cond_);
+		acl_pthread_cond_destroy(&cond_);
 		acl_pthread_mutex_destroy(&mutex_);
 	}
 	bool operator()(status_t status, raft::version ver)
@@ -72,7 +72,7 @@ public:
 		status_ = status;
 		ver_ = ver;
 		//notify .replicate done or error
-		acl_pthread_cond_signal(cond_);
+		acl_pthread_cond_signal(&cond_);
 		return true;
 	}
 	//wait for replicate dong or error
@@ -85,7 +85,7 @@ public:
 			acl_pthread_mutex_unlock(&mutex_);
 			return;
 		}
-		acl_pthread_cond_wait(cond_, &mutex_);
+		acl_pthread_cond_wait(&cond_, &mutex_);
 		acl_pthread_mutex_unlock(&mutex_);
 	}
 	raft::version version()
@@ -98,7 +98,7 @@ public:
 	}
 private:
 	acl_pthread_mutex_t mutex_;
-	acl_pthread_cond_t *cond_;
+	acl_pthread_cond_t cond_;
 	status_t status_;
 	raft::version ver_;
 	bool done_;
@@ -143,12 +143,12 @@ bool replicate(const REQ& req,
 	future.wait();
 	//maybe node lost leadership.
 	replicate_status_t status = future.status();
-	if (status == replicate_status_t::E_NO_LEADER)
+	if (status == raft::replicate_callback::E_NO_LEADER)
 	{
 		resp.status = "no leader";
 		return false;
 	}
-	else if (status == replicate_status_t::E_ERROR)
+	else if (status == raft::replicate_callback::E_ERROR)
 	{
 		resp.status = "error";
 		return false;
@@ -337,7 +337,7 @@ bool memkv_service::load_snapshot(const std::string &file_path)
 	}
 	file.close();
 
-	logger("load_snapshot %s done.items:%llu",
+	logger("load_snapshot %s done.items:%u",
 		file_path.c_str(), items);
 
 	return true;
@@ -345,6 +345,8 @@ bool memkv_service::load_snapshot(const std::string &file_path)
 bool memkv_service::make_snapshot(const std::string &path,
 	std::string &filepath)
 {
+	acl::lock_guard lg(mem_store_locker_);
+	
 	acl::string snapshot_path;
 	snapshot_path += path.c_str();
 	/**
@@ -354,7 +356,9 @@ bool memkv_service::make_snapshot(const std::string &path,
 		eg: power off, disk error, and so on.
 		".snapshot" is good snapshot file extension.
 	*/
-	snapshot_path.format_append("%llu.%llu.temp_snapshot");
+	snapshot_path.format_append("%llu.%llu.temp_snapshot", 
+				curr_ver_.index_, 
+				curr_ver_.term_);
 
 	acl::ofstream file;
 	if (!file.open_trunc(snapshot_path.c_str()))
@@ -363,7 +367,6 @@ bool memkv_service::make_snapshot(const std::string &path,
 		return false;
 	}
 
-	acl::lock_guard lg(mem_store_locker_);
 
 	//write raft::version .and store item count
 	if (!raft::write(file, curr_ver_) ||
@@ -401,8 +404,7 @@ bool memkv_service::apply(const std::string& data,
 	if (data.empty())
 		return false;
 
-	char flag = data.back();
-	const_cast<std::string&>(data).pop_back();
+	char flag = data[data.size() - 1];
 	std::pair<bool, std::string> status;
 	if (flag == SET_REQ)
 	{

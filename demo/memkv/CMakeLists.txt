@@ -29,7 +29,10 @@ add_executable(memkv ${SRC_LIST})
 target_link_libraries(memkv 
 	libraft 
 	${HTTP_RPC_LIB_PATH}/libhttp_rpc.a
-	${ACL_PATH}/lib_acl_cpp/lib/lib_acl_cpp.a
-	${ACL_PATH}/lib_acl/lib/lib_acl.a
-	pthread)
+	${ACL_ROOT}/lib_acl_cpp/lib/lib_acl_cpp.a
+	${ACL_ROOT}/lib_acl/lib/lib_acl.a
+	${ACL_ROOT}/lib_protocol/lib/lib_protocol.a
+	protobuf
+	pthread
+	z)
 

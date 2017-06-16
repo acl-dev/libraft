@@ -110,7 +110,7 @@ namespace raft
 		if (!is_leader())
 		{
 			logger("node is not leader .is %s",
-				role() == role_t::E_FOLLOWER ? "follower" : "candidate");
+				role() == E_FOLLOWER ? "follower" : "candidate");
 			return false;
 		}
 		if (!write_log(data, index, term))
@@ -172,7 +172,8 @@ namespace raft
 
 		if (snapshot_path_.size())
 		{
-			char ch = snapshot_path_.back();
+			//back
+			char ch = snapshot_path_[snapshot_path_.size() - 1];
 			if (ch != '/'  && ch != '\\')
 			{
 				snapshot_path_.push_back('/');
@@ -288,7 +289,7 @@ namespace raft
 		current_term_ = term;
 	}
 
-	node::role_t node::role()
+	int node::role()
 	{
 		acl::lock_guard lg(metadata_locker_);
 		return role_;
@@ -306,7 +307,7 @@ namespace raft
 		return vote_for_;
 	}
 
-	void node::set_role(role_t _role)
+	void node::set_role(int _role)
 	{
 		acl::lock_guard lg(metadata_locker_);
 		role_ = _role;
@@ -463,7 +464,7 @@ namespace raft
 			return;
 		}
 
-		if (role() != role_t::E_CANDIDATE)
+		if (role() != E_CANDIDATE)
 		{
 			logger("handle vote_response, but not candidate");
 			return;
@@ -502,7 +503,7 @@ namespace raft
 
 		cancel_election_timer();
 
-		set_role(role_t::E_LEADER);
+		set_role(E_LEADER);
 
 		clear_vote_response();
 		/*
@@ -522,7 +523,7 @@ namespace raft
 
 	void node::handle_new_term(term_t term)
 	{
-		logger("receive new term.%d", term);
+		logger("receive new term.%llu", term);
 		set_current_term(term);
 		step_down();
 	}
@@ -552,7 +553,7 @@ namespace raft
 		{
 			logger_error("scan open error %s\r\n",
 				acl::last_serror());
-			return{};
+			return snapshots;
 		}
 
 		while ((filepath = scan.next_file(true)) != NULL)
@@ -624,7 +625,7 @@ namespace raft
 
 		if (!(*make_snapshot_callback_)(snapshot_path_, filepath))
 		{
-			logger_error("make_snapshot error.path:",
+			logger_error("make_snapshot error.path:%s",
 				snapshot_path_.c_str());
 			return false;
 		}
@@ -760,7 +761,7 @@ namespace raft
 		* RPC from current leader or granting vote to candidate:
 		* convert to candidate
 		*/
-		if (role() == role_t::E_FOLLOWER && vote_for().size())
+		if (role() == E_FOLLOWER && vote_for().size())
 		{
 			set_election_timer();
 			return;
@@ -777,7 +778,7 @@ namespace raft
 		*/
 
 		clear_vote_response();
-		set_role(role_t::E_CANDIDATE);
+		set_role(E_CANDIDATE);
 		set_current_term(current_term() + 1);
 		set_vote_for(raft_id_);
 		notify_peers_to_election();
@@ -921,7 +922,7 @@ namespace raft
 		acl::lock_guard lg(replicate_callbacks_locker_);
 
 		replicate_callbacks_t::iterator it = replicate_callbacks_.begin();
-		for (; it != replicate_callbacks_.end(); ++it)
+		for (; it != replicate_callbacks_.end();)
 		{
 			if (it->first.index_ <= committed)
 			{
@@ -931,7 +932,7 @@ namespace raft
 					return;
 				}
 				set_applied_index(it->first.index_);
-				it = replicate_callbacks_.erase(it);
+				replicate_callbacks_.erase(it++);
 				continue;
 			}
 			break;
@@ -1092,7 +1093,7 @@ namespace raft
 			 *Create new snapshot file if first chunk (offset is 0)
 			 */
 			acl::string file_path = snapshot_path_.c_str();
-			file_path.format_append("llu%.snapshot_tmp",
+			file_path.format_append("%lu.snapshot_tmp",
 				info.last_snapshot_index());
 			snapshot_info_ = new snapshot_info(info);
 			acl_assert(!snapshot_tmp_);
@@ -1122,15 +1123,15 @@ namespace raft
 
 	void node::step_down()
 	{
-		if (role() == role_t::E_LEADER)
+		if (role() == E_LEADER)
 		{
 			//todo 
 		}
-		else if (role() == role_t::E_CANDIDATE)
+		else if (role() == E_CANDIDATE)
 		{
 			clear_vote_response();
 		}
-		set_role(role_t::E_FOLLOWER);
+		set_role(E_FOLLOWER);
 		set_election_timer();
 	}
 
@@ -1172,9 +1173,11 @@ namespace raft
 		}
 
 		std::string snapshot = filepath;
-		while (snapshot.size() && snapshot.back() != '.')
-			snapshot.pop_back();
-		snapshot.pop_back();
+		size_t pos = snapshot.find_last_of('.');
+		if(pos != snapshot.npos)
+		{
+			snapshot = snapshot.substr(0, pos);
+		}
 		snapshot += __SNAPSHOT_EXT__;
 
 		/*save snapshot file*/
@@ -1221,8 +1224,8 @@ namespace raft
 		}
 		logger("load_snapshot_file ok ."
 			"file_path:%s,"
-			"last_log_index:%d,"
-			"last_log_term:%d,",
+			"last_log_index:%llu,"
+			"last_log_term:%llu,",
 			snapshot.c_str(), ver.index_, ver.term_);
 
 		acl::lock_guard lg(metadata_locker_);
@@ -1303,7 +1306,7 @@ namespace raft
 
 		entry.set_term(term);
 		entry.set_log_data(data);
-		entry.set_type(log_entry_type::e_raft_log);
+		entry.set_type(e_raft_log);
 	}
 
 	bool node::write_log(const std::string &data,

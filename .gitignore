@@ -42,4 +42,9 @@ Debug/
 .idea/
 
 build/
+
 cmake-build-debug/
+
+./include/proto_gen/*
+
+./src/proto_gen/*

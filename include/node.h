@@ -32,7 +32,7 @@ namespace raft
 		term_t term_;
 	};
 
-	inline bool operator <(const version& left, const version& right);
+	bool operator <(const version& left, const version& right);
 
 	struct apply_callback
 	{
@@ -313,9 +313,9 @@ namespace raft
 
 		void set_committed_index(log_index_t index);
 
-		role_t role();
+		int role();
 
-		void set_role(role_t _role);
+		void set_role(int _role);
 
 		std::string vote_for();
 
@@ -471,7 +471,7 @@ namespace raft
 		log_index_t committed_index_;
 		log_index_t applied_index_;
 		term_t		current_term_;
-		role_t		role_;
+		int		role_;
 		std::string raft_id_;
 		std::string leader_id_;
 		std::string vote_for_;

@@ -12,7 +12,10 @@ namespace raft
 	log_manager::log_manager(const std::string &path) 
 		:path_(path)
 	{
-		if (path_.back() != '/' && path_.back() != '\\')
+		if(path_.empty())
+			logger("log path empty. and set it to \"log/\"");
+		
+		if (path_[path.size() - 1] != '/' && path_[path_.size() - 1] != '\\')
 			path_.push_back('/');
 
 		log_size_	= 4 * 1024 * 1024;
@@ -98,7 +101,7 @@ namespace raft
 			{
 				_log->auto_delete(true);
 				_log->dec_ref();
-				it = logs_.erase(it);
+				logs_.erase(it++);
 				continue;
 			}
 			_log->truncate(index);
@@ -202,7 +205,7 @@ namespace raft
 				std::string filepath = it->second->file_path();
 				it->second->auto_delete(true);
 				it->second->dec_ref();
-				it = logs_.erase(it);
+				logs_.erase(it++);
 				del_count_++;
 				logger("log_manager discard %s log", filepath.c_str());
 			}
