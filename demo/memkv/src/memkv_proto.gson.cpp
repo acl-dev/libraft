@@ -1,3 +1,4 @@
+#include "acl_cpp/lib_acl.hpp"
 #include "memkv_proto.h"
 #include "memkv_proto.gson.h"
 #include "acl_cpp/serialize/gson_helper.ipp"

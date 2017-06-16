@@ -155,8 +155,13 @@ namespace raft
 	{
 		if (!write(_stream, static_cast<unsigned int>(data.size())))
 			return false;
-		return _stream.write(data.c_str(), data.size()) 
-			== static_cast<int>(data.size());
+		
+		//empty data.
+		if (data.size() == 0)
+			return true;
+
+		return _stream.write(data.c_str(), data.size()) == 
+			static_cast<int>(data.size());
 	}
 	
 	inline bool read(acl::istream &_stream, unsigned int &value)
@@ -173,7 +178,7 @@ namespace raft
 	inline bool read(acl::istream &_stream, std::string &buffer)
 	{
 		unsigned int size = 0;
-		if (!read(_stream, buffer))
+		if (!read(_stream, size))
 			return false;
 		//empty string
 		if (size == 0)

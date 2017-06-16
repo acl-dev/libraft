@@ -1,14 +1,14 @@
 #pragma once
-class memkv_service :acl::service_base
+class memkv_service : public acl::service_base
 {
 public:
 	explicit memkv_service(acl::http_rpc_server &server);
 
 	~memkv_service();
 private:
-	friend class memkv_load_snapshot_callback;
-	friend class memkv_make_snapshot_callback;
-	friend class memkv_apply_callback;
+	friend struct memkv_load_snapshot_callback;
+	friend struct memkv_make_snapshot_callback;
+	friend struct memkv_apply_callback;
 
 	typedef std::map<std::string, std::string> memkv_store_t;
 	
@@ -33,8 +33,8 @@ private:
 
 	//helper function
 	bool check_leader()const;
+	
 	//memkv serivces
-
 	bool get(const get_req &req, get_resp &resp);
 
 	bool exist(const exist_req &req, exist_resp& resp);

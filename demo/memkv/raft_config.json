@@ -1,0 +1,17 @@
+{
+    "log_path": "log/",
+    "snapshot_path": "snapshot/",
+    "metadata_path": "metadata_path/",
+    "max_log_size": 1024000,
+    "max_log_count": 6,
+    "peer_addrs": [
+        {
+            "addr": "127.0.0.1:11082",
+            "id": "11082"
+        }
+    ],
+    "node_addr": {
+        "addr": "127.0.0.1:11081",
+        "id": "11081"
+    }
+}

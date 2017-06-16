@@ -44,5 +44,14 @@
     <ClCompile Include="src\raft_config.gson.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="src\memkv.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="src\main.cpp">
+      <Filter>头文件</Filter>
+    </ClCompile>
+    <ClCompile Include="src\memkv_config.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

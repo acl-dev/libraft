@@ -27,9 +27,17 @@
     <ClInclude Include="include\raft_config.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\memkv_config.cpp" />
+    <ClCompile Include="src\main.cpp" />
+    <ClCompile Include="src\memkv.cpp" />
     <ClCompile Include="src\memkv_proto.gson.cpp" />
     <ClCompile Include="src\memkv_service.cpp" />
     <ClCompile Include="src\raft_config.gson.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\libraft.vcxproj">
+      <Project>{0decfc8a-bbd8-46ed-8aec-96543d292e18}</Project>
+    </ProjectReference>
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{C04BF288-E52E-4C04-8D8C-D50EF13B11C2}</ProjectGuid>

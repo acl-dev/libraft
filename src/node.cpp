@@ -184,6 +184,9 @@ namespace raft
 	void node::set_log_path(const std::string &path)
 	{
 		log_path_ = path;
+		acl_assert(!log_manager_);
+		log_manager_ = new mmap_log_manager(log_path_);
+		log_manager_->set_log_size(max_log_size_);
 	}
 
 	void node::set_metadata_path(const std::string &path)
@@ -194,6 +197,8 @@ namespace raft
 	void node::set_max_log_size(size_t size)
 	{
 		max_log_size_ = size;
+		if(log_manager_)
+			log_manager_->set_log_size(max_log_size_);
 	}
 
 	void node::set_max_log_count(size_t size)

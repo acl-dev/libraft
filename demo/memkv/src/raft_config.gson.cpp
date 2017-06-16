@@ -1,4 +1,4 @@
-#include "stdafx.h"
+#include "acl_cpp/lib_acl.hpp"
 #include "raft_config.h"
 #include "raft_config.gson.h"
 #include "acl_cpp/serialize/gson_helper.ipp"

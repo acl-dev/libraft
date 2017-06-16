@@ -6,6 +6,8 @@
 #include "raft_config.gson.h"
 #include "memkv_service.h"
 
+extern char *var_cfg_raft_config;
+
 typedef raft::replicate_callback::status_t replicate_status_t;
 
 struct memkv_load_snapshot_callback :raft::load_snapshot_callback
@@ -130,11 +132,6 @@ bool replicate(const REQ& req,
 	raft::node *node,
 	raft::version &version)
 {
-	if (!check_leader())
-	{
-		resp.status = "no leader";
-		return false;
-	}
 	std::string data = to_string(acl::gson(req));
 	data.push_back(get_req_flag(req));
 	replicate_future future;
@@ -164,10 +161,13 @@ bool replicate(const REQ& req,
 memkv_service::memkv_service(acl::http_rpc_server &server)
 	:acl::service_base(server)
 {
+	acl_assert(var_cfg_raft_config);
+
 	load_snapshot_callback_ = new memkv_load_snapshot_callback(this);
 	make_snapshot_callback_ = new memkv_make_snapshot_callback(this);
 	apply_callback_ = new memkv_apply_callback(this);
 	node_ = new raft::node;
+	cfg_file_path_ = var_cfg_raft_config;
 }
 
 memkv_service::~memkv_service()
@@ -197,16 +197,10 @@ void memkv_service::load_config()
 			acl::last_serror());
 		return;
 	}
-
 	acl::string data;
-	acl::string buf;
-	while (!file.eof())
-	{
-		if (file.read(buf))
-			data += buf;
-	}
+	acl_assert(file.load(&data));
 
-	std::pair<bool, std::string> ret = acl::gson(data, cfg_);
+	std::pair<bool, std::string> ret = acl::gson(data.c_str(), cfg_);
 	if (!ret.first)
 	{
 		logger_fatal("gson error.%s", ret.second.c_str());
@@ -256,7 +250,7 @@ void memkv_service::init_raft_node()
 	node_->set_snapshot_path(cfg_.snapshot_path);
 
 	std::vector<std::string> peers;
-	for (; size_t i = cfg_.peer_addrs.size(); i++)
+	for (size_t i = 0; i < cfg_.peer_addrs.size(); i++)
 	{
 		peers.push_back(cfg_.peer_addrs[i].id);
 	}
@@ -482,6 +476,12 @@ bool memkv_service::exist(const exist_req &req, exist_resp& resp)
 
 bool memkv_service::set(const set_req &req, set_resp &resp)
 {
+	if (!check_leader())
+	{
+		resp.status = "no leader";
+		return true;
+	}
+
 	raft::version ver;
 	if (!replicate(req, resp, node_, ver))
 	{
@@ -498,6 +498,13 @@ bool memkv_service::set(const set_req &req, set_resp &resp)
 }
 bool memkv_service::del(const del_req &req, del_resp &resp)
 {
+
+	if (!check_leader())
+	{
+		resp.status = "no leader";
+		return true;
+	}
+
 	raft::version ver;
 	if (!replicate(req, resp, node_, ver))
 	{
