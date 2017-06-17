@@ -41,5 +41,5 @@ int main(int argc, char *argv[])
 	{
 		kv.run_daemon(argc, argv);
 	}
-
+	return 0;
 }

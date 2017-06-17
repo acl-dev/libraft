@@ -19,9 +19,9 @@ if(NOT HTTP_RPC_INCLUDE_PATH)
 	message(FATAL_ERROR "libraft depend on http_rpc.please define HTTP_RPC_INCLUDE_PATH to build")
 endif()
 
-message(STATUS ${ACL_ROOT})
-message(STATUS ${HTTP_RPC_INCLUDE_PATH})
-message(STATUS ${HTTP_RPC_LIB_PATH})
+message(STATUS "ACL_ROOT : ${ACL_ROOT}")
+message(STATUS "HTTP_RPC_INCLUDE_PATH : ${HTTP_RPC_INCLUDE_PATH}")
+message(STATUS "HTTP_RPC_LIB_PATH : ${HTTP_RPC_LIB_PATH}")
 
 
 include_directories(${ACL_ROOT}/lib_acl/include)
@@ -30,8 +30,8 @@ include_directories(${HTTP_RPC_INCLUDE_PATH})
 include_directories(${libraft_SOURCE_DIR}/include)
 include_directories(${libraft_SOURCE_DIR}/include/proto_gen)
 
-aux_source_directory(${libraft_SOURCE_DIR}/src SRC_LIST)
+aux_source_directory(${libraft_SOURCE_DIR}/src libraft_sources)
 
-add_library(libraft ${SRC_LIST} src/proto_gen/raft.pb.cc)
+add_library(libraft ${libraft_sources} src/proto_gen/raft.pb.cc)
 
 add_subdirectory(demo)

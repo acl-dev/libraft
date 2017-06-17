@@ -1,10 +1,10 @@
 #include "acl_cpp/lib_acl.hpp"
 #include "lib_acl.h"
 #include "memkv_proto.h"
-#include "memkv_proto.gson.h"
-#include "raft.hpp"
 #include "raft_config.h"
-#include "raft_config.gson.h"
+#include "cluster_config.h"
+#include "gson.h"
+#include "raft.hpp"
 #include "memkv_service.h"
 
 extern char *var_cfg_raft_config;

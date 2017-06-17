@@ -18,21 +18,25 @@ if(NOT ACL_ROOT)
     message(FATAL_ERROR "need define ACL_ROOT")
 endif()
 
+message(STATUS "memkv_proto_include:${memkv_proto_SOURCE_DIR}/include")
+
 include_directories(
+        ${memkv_proto_SOURCE_DIR}/include
+        include
         ${ACL_ROOT}/lib_acl/include
         ${ACL_ROOT}/lib_acl_cpp/include
         ${ACL_ROOT}/lib_protocol/include
-        ${HTTP_RPC_INCLUDE_PATH}
-        ${memkv_client_SROURCE_DIR}/include)
+        ${HTTP_RPC_INCLUDE_PATH})
 
 aux_source_directory(${memkv_client_SOURCE_DIR}/src SRC_LIST)
 
 add_executable(memkv_client ${SRC_LIST})
 
 target_link_libraries(memkv_client
-        ${HTTP_RPC_LIB_PATH}/http_rpc
+        memkv_proto
+        ${HTTP_RPC_LIB_PATH}/libhttp_rpc.a
         ${ACL_ROOT}/lib_acl_cpp/lib/lib_acl_cpp.a
-        $(ACL_ROOT)/lib_protocol/lib/lib_protocol.a
+        ${ACL_ROOT}/lib_protocol/lib/libprotocol.a
         ${ACL_ROOT}/lib_acl/lib/lib_acl.a
         pthread
         z)

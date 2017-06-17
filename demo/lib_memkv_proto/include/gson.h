@@ -1,6 +1,21 @@
-#pragma once
 namespace acl
 {
+    //addr_info
+    acl::string gson(const addr_info &$obj);
+    acl::json_node& gson(acl::json &$json, const addr_info &$obj);
+    acl::json_node& gson(acl::json &$json, const addr_info *$obj);
+    std::pair<bool,std::string> gson(acl::json_node &$node, addr_info &$obj);
+    std::pair<bool,std::string> gson(acl::json_node &$node, addr_info *$obj);
+    std::pair<bool,std::string> gson(const acl::string &str, addr_info &$obj);
+
+    //cluster_config
+    acl::string gson(const cluster_config &$obj);
+    acl::json_node& gson(acl::json &$json, const cluster_config &$obj);
+    acl::json_node& gson(acl::json &$json, const cluster_config *$obj);
+    std::pair<bool,std::string> gson(acl::json_node &$node, cluster_config &$obj);
+    std::pair<bool,std::string> gson(acl::json_node &$node, cluster_config *$obj);
+    std::pair<bool,std::string> gson(const acl::string &str, cluster_config &$obj);
+
     //del_req
     acl::string gson(const del_req &$obj);
     acl::json_node& gson(acl::json &$json, const del_req &$obj);
@@ -48,6 +63,14 @@ namespace acl
     std::pair<bool,std::string> gson(acl::json_node &$node, get_resp &$obj);
     std::pair<bool,std::string> gson(acl::json_node &$node, get_resp *$obj);
     std::pair<bool,std::string> gson(const acl::string &str, get_resp &$obj);
+
+    //raft_config
+    acl::string gson(const raft_config &$obj);
+    acl::json_node& gson(acl::json &$json, const raft_config &$obj);
+    acl::json_node& gson(acl::json &$json, const raft_config *$obj);
+    std::pair<bool,std::string> gson(acl::json_node &$node, raft_config &$obj);
+    std::pair<bool,std::string> gson(acl::json_node &$node, raft_config *$obj);
+    std::pair<bool,std::string> gson(const acl::string &str, raft_config &$obj);
 
     //set_req
     acl::string gson(const set_req &$obj);
