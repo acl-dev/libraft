@@ -22,6 +22,7 @@ namespace raft
 		last_index_ = 0;
 		last_log_	= NULL;
 		last_term_	= 0;
+		reload_logs();
 	}
 
 	log_manager::~log_manager()
@@ -46,11 +47,11 @@ namespace raft
 			if (last_log_)
 				acl_assert(last_log_->eof());
 
-			acl::string filepath(path_.c_str());
+			acl::string file_path(path_.c_str());
 
-			filepath.format_append("%llu%s",last_index_ + 1, __LOG_EXT__);
+			file_path.format_append("%llu%s",last_index_ + 1, __LOG_EXT__);
 
-			last_log_ = create(filepath.c_str());
+			last_log_ = create(file_path.c_str());
 			if (!last_log_)
 			{
 				logger_error("create log error");
@@ -76,15 +77,19 @@ namespace raft
 
 	bool log_manager::read(log_index_t index, log_entry &entry)
 	{
-		bool result = false;
 
-		if (index > last_index() || index < start_index() || !log_count())
-			return false;
+		if (index > last_index() ||
+            index < start_index() ||
+            !log_count())
+        {
+            return false;
+        }
+
 		
 		log *log_ = find_log(index);
 		acl_assert(log_);
 
-		result = log_->read(index, entry);
+		bool result = log_->read(index, entry);
 		log_->dec_ref();
 
 		return result;
@@ -119,8 +124,13 @@ namespace raft
 
 		do
 		{
-			if ( max_bytes <= 0 || max_count <= 0 || begin > last_index())
-				break;
+			if ( max_bytes <= 0 ||
+                    max_count <= 0 ||
+                    begin > last_index())
+            {
+                break;
+            }
+
 
 			log *log_ = find_log(begin);
 			
@@ -216,7 +226,7 @@ namespace raft
 		return del_count_;
 	}
 
-	void log_manager::set_log_size(int log_size)
+	void log_manager::set_log_size(size_t log_size)
 	{
 		log_size_ = log_size;
 	}
@@ -270,7 +280,7 @@ namespace raft
 		}
 		logs_.clear();
 
-		if (scan.open(path_.c_str(), false) == false)
+		if (!scan.open(path_.c_str(), false))
 		{
 			logger_error("scan open error %s\r\n",
 				acl::last_serror());

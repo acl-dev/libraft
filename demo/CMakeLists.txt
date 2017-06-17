@@ -1,1 +1,2 @@
 add_subdirectory(memkv)
+add_subdirectory(memkv_client)

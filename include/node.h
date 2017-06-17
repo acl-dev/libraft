@@ -149,7 +149,7 @@ namespace raft
 		 */
 		bool is_leader();
 		
-		/**
+		/**```
 		 * \brief get cluster leader id
 		 * \return id of leader, it maybe empty when cluster has not leader,
 		 * or this node lose connect to cluster.

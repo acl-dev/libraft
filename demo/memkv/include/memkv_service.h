@@ -34,7 +34,7 @@ private:
 	//helper function
 	bool check_leader()const;
 	
-	//memkv serivces
+	//memkv services
 	bool get(const get_req &req, get_resp &resp);
 
 	bool exist(const exist_req &req, exist_resp& resp);

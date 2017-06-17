@@ -38,19 +38,19 @@ namespace raft
 
 		int discard_log(log_index_t log_start_index);
 
-		void set_log_size(int log_size);
+		void set_log_size(size_t log_size);
 
 		void set_last_index(log_index_t index);
 
 		void set_last_term(term_t term);
 	protected:
 
-		virtual log *create(const std::string &filepath) = 0;
+		virtual log *create(const std::string &file_path) = 0;
 
 		log *find_log(log_index_t index);
 
 		std::string		path_;
-		int				log_size_;
+		size_t			log_size_;
 		log_index_t		last_index_;
 		term_t			last_term_;
 		acl::locker		locker_;

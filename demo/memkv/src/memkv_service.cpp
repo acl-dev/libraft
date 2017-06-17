@@ -18,9 +18,9 @@ struct memkv_load_snapshot_callback :raft::load_snapshot_callback
 	{
 
 	}
-	virtual bool operator()(const std::string &filepath)
+	virtual bool operator()(const std::string &file_path)
 	{
-		return memkv_service_->load_snapshot(filepath);
+		return memkv_service_->load_snapshot(file_path);
 	}
 	memkv_service *memkv_service_;
 };
@@ -31,9 +31,9 @@ struct memkv_make_snapshot_callback :raft::make_snapshot_callback
 	{
 
 	}
-	virtual bool operator()(const std::string &path, std::string &filepath)
+	virtual bool operator()(const std::string &path, std::string &file_path)
 	{
-		return memkv_service_->make_snapshot(path, filepath);
+		return memkv_service_->make_snapshot(path, file_path);
 	}
 	memkv_service *memkv_service_;
 };
