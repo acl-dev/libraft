@@ -202,4 +202,71 @@ namespace raft
 	{
 		return !(left == right);
 	}
+    //mmap
+
+    inline void *open_mmap(ACL_FILE_HANDLE fd, size_t max_len)
+    {
+        void *data = NULL;
+
+#ifdef ACL_UNIX
+        if(ftruncate(fd, max_len) == -1)
+        {
+            logger_error("ftruncate error.:%s", acl::last_serror());
+            return NULL;
+        }
+
+        data = mmap(
+                NULL,
+                max_len,
+                PROT_READ | PROT_WRITE,
+                MAP_SHARED,
+                fd,
+                0);
+
+        if (data == MAP_FAILED)
+            logger_error("mmap error: %s", acl_last_serror());
+
+#elif defined(_WIN32) || defined(_WIN64)
+        (void)max_len;
+
+        ACL_FILE_HANDLE hmap =
+			CreateFileMapping(
+				fd,
+				NULL,
+				PAGE_READWRITE,
+				0,
+				static_cast<DWORD>(max_len),
+				NULL);
+
+		if (!hmap)
+			logger_error("CreateFileMapping: %s", acl_last_serror());
+
+		data = MapViewOfFile(
+			hmap,
+			FILE_MAP_READ | FILE_MAP_WRITE,
+			0,
+			0,
+			0);
+
+		if (!data)
+			logger_error("MapViewOfFile error: %s",
+				acl_last_serror());
+
+		acl_assert(CloseHandle(hmap));
+#else
+		logger_error("%s: not supported yet!", __FUNCTION__);
+#endif
+        return data;
+    }
+
+    inline void close_mmap(void *map, size_t map_size)
+    {
+#if defined (_WIN32) || defined(_WIN64)
+        (void)map_size;
+		acl_assert(FlushViewOfFile(map, 0));
+		acl_assert(UnmapViewOfFile(map));
+#elif defined (linux)
+        munmap(map, map_size);
+#endif
+    }
 }

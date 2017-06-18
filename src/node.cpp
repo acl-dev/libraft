@@ -14,6 +14,9 @@
 #define __SNAPSHOT_EXT__ ".snapshot"
 #endif
 
+#define NODE_SECTION 11
+#define ELECTION_SECTION 12
+
 namespace raft
 {
 	const static std::string g_magic_string("raft-snapshot-head");
@@ -282,7 +285,7 @@ namespace raft
 	}
 	void node::set_current_term(term_t term)
 	{
-        logger_debug(1,2,"set term to %llu",term);
+        logger_debug(ELECTION_SECTION,2,"set term to %llu",term);
 
 		acl::lock_guard lg(metadata_locker_);
 
@@ -312,7 +315,7 @@ namespace raft
 
 	void node::set_role(int _role)
 	{
-        logger_debug(1,2,"set role to %s",
+        logger_debug(ELECTION_SECTION,2,"set role to %s",
                      _role == E_CANDIDATE ? "candidate":
                      (_role == E_FOLLOWER ? "follower":"leader"));
 
@@ -360,10 +363,27 @@ namespace raft
 		//log empty 
 		if (last_log_index() == 0)
 		{
+            logger_debug(NODE_SECTION, 10, "log empty return ok");
 			request.set_prev_log_index(0);
 			request.set_prev_log_term(0);
+
 			return true;
+
 		}
+        else if(index == 1)
+        {
+            log_entry entry;
+            if (log_manager_->read(1, entry))
+            {
+                request.set_prev_log_index(0);
+                request.set_prev_log_term(0);
+
+                //copy? c++11 it replace move.
+                *request.add_entries() = entry;
+                // read log ok
+                return true;
+            }
+        }
 		else if (index <= last_log_index())
 		{
 			std::vector<log_entry> entries;
@@ -371,8 +391,16 @@ namespace raft
 			if (log_manager_->read(index - 1, __10MB__,
 				entry_size, entries))
 			{
+
 				request.set_prev_log_index(entries[0].index());
-				request.set_prev_log_term(entries[0].index());
+				request.set_prev_log_term(entries[0].term());
+
+                logger_debug(NODE_SECTION, 10,
+                             "pre_log_index(%lu) "
+                             "pre_log_term(%lu) ",
+                             entries[0].index(),
+                             entries[0].term());
+
 				//first one is prev log
 				for (size_t i = 1; i < entries.size(); i++)
 				{
@@ -385,13 +413,14 @@ namespace raft
 		}
 		else
 		{
+            logger_debug(NODE_SECTION, 10, "index > last_log_index()");
 			/*peer match leader now .and just make heartbeat req*/
 			log_entry entry;
 			/*index -1 for prev_log_term, prev_log_index */
 			if (log_manager_->read(index - 1, entry))
 			{
 				request.set_prev_log_index(entry.index());
-				request.set_prev_log_term(entry.index());
+				request.set_prev_log_term(entry.term());
 
 				// read log ok
 				return true;
@@ -421,8 +450,8 @@ namespace raft
 	{
 		/*
 		 * If there exists an N such that N > commitIndex, a majority
-		 * of matchIndex[i] �� N, and log[N].term == currentTerm:
-		 * set commitIndex = N (��5.3, ��5.4).
+		 * of matchIndex[i] > N, and log[N].term == currentTerm:
+		 * set commitIndex = N (5.3, 5.4).
 		*/
 		if (!is_leader())
 		{
@@ -431,20 +460,26 @@ namespace raft
 		}
 
 		std::vector<log_index_t>
-			mactch_indexs = get_peers_match_index();
+			match_indexs = get_peers_match_index();
 
-		mactch_indexs.push_back(last_log_index());//myself 
+		match_indexs.push_back(last_log_index());//myself
 
-		std::sort(mactch_indexs.begin(), mactch_indexs.end());
+		std::sort(match_indexs.begin(), match_indexs.end());
 
 		log_index_t majority_index
-			= mactch_indexs[mactch_indexs.size() / 2];
+			= match_indexs[match_indexs.size() / 2];
 
 		if (majority_index > committed_index())
 		{
 			set_committed_index(majority_index);
-			apply_log_.do_apply();
+            invoke_replicate_callback(replicate_callback::E_OK);
+			//apply_log_.do_apply();
 		}
+        logger_debug(NODE_SECTION, 10,
+                     "majority_index(%llu)"
+                     " committed_index(%llu)",
+                     majority_index,
+                     committed_index());
 	}
 
 	void node::build_vote_request(vote_request &req)
@@ -473,6 +508,16 @@ namespace raft
 		const std::string &peer_id,
 		const vote_response &response)
 	{
+        logger_debug(NODE_SECTION, 10,
+                     "term(%lu) "
+                     "current_term(%llu) "
+                     "log ok:%d "
+                     "vote_granted:%d ",
+                     response.term(),
+                     current_term(),
+                     response.log_ok(),
+                     response.vote_granted());
+
 		if (response.term() < current_term())
 		{
 			logger("handle vote_response, but term is old. "
@@ -482,6 +527,13 @@ namespace raft
                    response.term());
 			return;
 		}
+        ///????????
+        if(response.term() > current_term())
+        {
+            set_current_term(response.term());
+            clear_vote_response();
+            return;
+        }
 
 		if (role() != E_CANDIDATE)
 		{
@@ -743,6 +795,8 @@ namespace raft
 
 	void node::set_committed_index(log_index_t index)
 	{
+        logger_debug(NODE_SECTION, 10, "set committed to %llu", index);
+
 		acl::lock_guard lg(metadata_locker_);
 
 		/*multi thread update committed_index.
@@ -756,12 +810,14 @@ namespace raft
 		unsigned int timeout = election_timeout_;
 
 		srand(static_cast<unsigned int>(time(NULL) % 0xffffffff));
-		timeout += rand() % timeout;
+		timeout += rand() % timeout / 2;
 
 		election_timer_.set_timer(timeout);
-		logger("set_election_timer, "
-               "%d milliseconds later",
-               timeout);
+
+		logger_debug(ELECTION_SECTION, 10,
+                     "set_election_timer, "
+                     "%d milliseconds later",
+                     timeout);
 	}
 
 	void node::cancel_election_timer()
@@ -772,7 +828,7 @@ namespace raft
 	void node::election_timer_callback()
 	{
 
-        logger("election timer callback");
+        //logger("election timer callback");
 		/*
 		 * this node lost heartbeat from leader
 		 * and it has not leader now.so this node 
@@ -828,7 +884,7 @@ namespace raft
 
 	void node::notify_peers_to_election()
 	{
-        logger_debug(1,2,"trace");
+        logger_debug(ELECTION_SECTION,2,"trace");
 
 		acl::lock_guard lg(peers_locker_);
 
@@ -954,7 +1010,7 @@ namespace raft
 
     void node::notify_replicate_failed()
     {
-        logger_debug(1, 2, "trace");
+        logger_debug(ELECTION_SECTION, 2, "trace");
 
         acl::lock_guard lg(replicate_callbacks_locker_);
         replicate_callbacks_t::iterator it = replicate_callbacks_.begin();
@@ -969,6 +1025,7 @@ namespace raft
     }
 	void node::invoke_replicate_callback(replicate_callback::status_t status)
 	{
+        logger_debug(NODE_SECTION, 10, "-------------------------");
 		log_index_t committed = committed_index();
 
 		acl::lock_guard lg(replicate_callbacks_locker_);
@@ -995,7 +1052,16 @@ namespace raft
 		const replicate_log_entries_request &req,
 		replicate_log_entries_response &resp)
 	{
-        logger_debug(1,2,"-------handle_replicate_log_request------------");
+        logger_debug(NODE_SECTION, 10,
+                     "-------handle_replicate_log_request------------\n"
+                     "req.term(%lu), "
+                     "req.prev_log_index(%lu),"
+                     " req.prev_log_term(%lu)",
+                     req.term(),
+                     req.prev_log_index(),
+                     req.prev_log_term());
+
+
 
 		resp.set_req_id(req.req_id());
 		/*currentTerm, for leader to update itself*/
@@ -1029,7 +1095,12 @@ namespace raft
 		 */
 		if (req.prev_log_index() > last_log_index())
 		{
+            logger("req::pre_log_index(%lu) > last_log_index(%llu)",
+                   req.prev_log_index(),
+                   last_log_index());
+
 			resp.set_success(false);
+
 			return true;
 		}
 		else if (req.prev_log_index() == last_log_index())
@@ -1049,8 +1120,13 @@ namespace raft
 				* reply false if log does not contain an entry at prevLogIndex
 				* whose term matches prevLogTerm (5.3)
 				*/
-				if (req.prev_log_term() != log_manager_->last_term())
+				if (req.prev_log_term() != last_log_term())
 				{
+                    logger("req.prev_log_term(%lu) != "
+                           "last_log_term(%llu)",
+                           req.prev_log_term(),
+                           last_log_term());
+
 					resp.set_last_log_index(req.prev_log_index() - 1);
 				}
 			}
@@ -1066,6 +1142,10 @@ namespace raft
 				*/
 				if (req.prev_log_term() != entry.term())
 				{
+                    logger("req.pre_log_term(%lu) != entry.term(%lu)",
+                           req.prev_log_term(),
+                           entry.term());
+
 					resp.set_last_log_index(req.prev_log_index() - 1);
 					return true;
 				}
@@ -1078,11 +1158,17 @@ namespace raft
 		}
 		else
 		{
-			resp.set_last_log_index(last_snapshot_index());
+            logger("req.pre_log_index(%lu) < start_log_term(%llu)",
+                   req.prev_log_index(),
+                   start_log_index());
+
+			resp.set_last_log_index(last_log_index());
 			return true;
 		}
 
-		resp.set_success(true);
+        logger_debug(NODE_SECTION, 10, "log ok");
+
+        resp.set_success(true);
 
 		bool sync_log = true;
 
@@ -1101,16 +1187,19 @@ namespace raft
 					 *  (same index but different terms), delete the
 					 *  existing entry and all that follow it (��5.3)
 					 */
+                    logger("truncate log:%lu", entry.index());
 					log_manager_->truncate(entry.index());
 					sync_log = false;
 				}
 			}
 			/* Append any new entries not already in the log */
+
 			if (!log_manager_->write(entry))
 			{
-				logger_error("write log error...");
+				logger_error("!!!!!!!!!!!!!write log error!!!!!!!!!!...");
 				return true;
 			}
+            logger_debug(NODE_SECTION, 15, "write log ok.");
 		}
 		/*
 		 *  If leaderCommit > commitIndex,
@@ -1126,7 +1215,8 @@ namespace raft
 			set_committed_index(index);
 			apply_log_.do_apply();
 		}
-
+        logger_debug(NODE_SECTION, 10, "replicate log ok");
+        resp.set_last_log_index(last_log_index());
 		return true;
 	}
 
@@ -1181,7 +1271,7 @@ namespace raft
 
 	void node::step_down()
 	{
-        logger_debug(1,2,"trace");
+        logger_debug(ELECTION_SECTION, 10,"trace");
 
 		if (role() == E_LEADER)
 		{
@@ -1427,6 +1517,9 @@ namespace raft
 
 	void node::apply_log::do_apply()
 	{
+        logger_debug(NODE_SECTION, 10,
+                     "committed_index(%llu)",
+                     node_.committed_index());
 		acl_pthread_mutex_lock(&mutex_);
 		do_apply_ = true;
 		acl_pthread_cond_signal(&cond_);
@@ -1533,7 +1626,7 @@ namespace raft
 
 	void node::election_timer::set_timer(unsigned int delay)
 	{
-        logger("set timer %u",delay);
+        logger_debug(ELECTION_SECTION ,10 ,"set timer %u",delay);
 		acl_pthread_mutex_lock(&mutex_);
 		delay_ = delay;
 		cancel_ = false;

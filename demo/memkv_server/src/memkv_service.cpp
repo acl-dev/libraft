@@ -114,14 +114,14 @@ static inline std::string to_string(const acl::string &data)
 
 char get_req_flag(...)
 {
-	logger("not error req type");
+	logger_error("not error req type");
 	return '.';
 }
-char get_req_flag(set_req &)
+char get_req_flag(const set_req &)
 {
 	return SET_REQ;
 }
-char get_req_flag(del_req &)
+char get_req_flag(const del_req &)
 {
 	return DEL_REQ;
 }

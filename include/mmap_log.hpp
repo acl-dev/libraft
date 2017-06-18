@@ -56,10 +56,7 @@ namespace raft
 
 		unsigned char* get_index_buffer(log_index_t index);
 
-		static void *open_mmap(ACL_FILE_HANDLE fd, size_t maxlen);
-
-		static void close_mmap(void *map, size_t map_size);
-
+    private:
 		bool is_open_;
 		bool eof_;
 

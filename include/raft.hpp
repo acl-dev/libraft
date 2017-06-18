@@ -1,5 +1,8 @@
 #pragma once
 #include <string>
+#ifndef _WIN32
+#include<sys/mman.h> //mmap
+#endif
 #include "proto_gen/raft.pb.h"
 #include "http_rpc.h"
 #include "common.hpp"

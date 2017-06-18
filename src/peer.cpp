@@ -4,14 +4,16 @@
 #define TO_ELECTION   0x02
 #define TO_STOP       0x04
 
-#define RESET_EVENT(e)		  e = 0
-#define SET_TO_REPLICATE(e)   e |= TO_REPLICATE
-#define SET_TO_ELECTION(e)    e |= TO_ELECTION
-#define SET_TO_STOP(e)        e |= TO_STOP
+#define RESET_EVENT(e)		  (e = 0)
+#define SET_TO_REPLICATE(e)   (e |= TO_REPLICATE)
+#define SET_TO_ELECTION(e)    (e |= TO_ELECTION)
+#define SET_TO_STOP(e)        (e |= TO_STOP)
 
 #define IS_TO_REPLICATE(e)    (e & TO_REPLICATE)
 #define IS_TO_STOP(e)         (e & TO_STOP)
 #define IS_TO_ELECTION(e)     (e & TO_ELECTION)
+
+#define PEER_SECTION 10
 
 
 namespace raft
@@ -23,7 +25,7 @@ namespace raft
          match_index_(node_.last_log_index()),
          next_index_(match_index_ + 1),
          event_(0),
-         heart_inter_(1*1000),
+         heart_inter_(3*1000),
          rpc_client_(acl::http_rpc_client::get_instance()),
          rpc_fails_(0),
          req_id_(1)
@@ -98,7 +100,7 @@ namespace raft
 		int event = 0;
 		while(wait_event(event))
 		{
-            logger_debug(1,1,"event:%x",event);
+            logger_debug(PEER_SECTION, 10, "event:%x", event);
 			if (IS_TO_REPLICATE(event) && node_.is_leader())
 			{
 				do_replicate();
@@ -114,7 +116,7 @@ namespace raft
 
 	bool peer::do_install_snapshot()
 	{
-        logger_debug(1,2,"trace");
+        logger_debug(PEER_SECTION,10,"trace");
 
 		typedef acl::http_rpc_client::status_t status_t;
 
@@ -210,14 +212,17 @@ namespace raft
 			replicate_log_entries_response resp;
 			acl::http_rpc_client::status_t status;
 
+            logger_debug(PEER_SECTION, 10, "next_index_(%llu)", next_index_);
 			if (!node_.build_replicate_log_request(
 				req, 
 				next_index_, 
 				entry_size))
 			{
-				logger("build_replicate_log_request "
-					"failed. next_index_:%llu",
-					next_index_);
+				logger_debug(PEER_SECTION, 10,
+                             "build_replicate_log_request "
+                             "failed. next_index_:%llu",
+                             next_index_);
+
 				if (!do_install_snapshot())
 				{
 					logger_error("do_install_snapshot error.");
@@ -225,17 +230,19 @@ namespace raft
 				}
 				continue;
 			}
-            logger_debug(1,2,"---------pb_call----------");
+            logger_debug(PEER_SECTION,2,
+                         "===============pb_call=============");
 
             req.set_req_id(++req_id_);
 
-            std::string data = req.SerializeAsString();
-            acl_assert(data.size());
+			//for next heartbeat time;
+			gettimeofday(&last_replicate_time_, NULL);
 
 			status = rpc_client_.pb_call(
 				replicate_service_path_,
 				req,
 				resp);
+
 			if (!status)
 			{
 				logger_error("proto_call error.%s", 
@@ -244,7 +251,7 @@ namespace raft
 				break;
 			}
 
-            logger_debug(1,2,"pb_call done");
+            logger_debug(PEER_SECTION,10,"pb_call done");
 
 			if (!resp.success())
 			{
@@ -261,22 +268,21 @@ namespace raft
 				match_index_ = 0;
 				continue;
 			}
-            logger_debug(1,2,"replicate ok");
+            logger_debug(PEER_SECTION,10,"replicate ok");
 
-			//for next heartbeat time;
-			gettimeofday(&last_replicate_time_, NULL);
 
-			node_.replicate_log_callback();
-
-			//
+			//update peer metadata
 			entry_size = 0;
 			match_index_ = resp.last_log_index();
 			next_index_ = match_index_ + 1;
-			
+
+            //callback to node
+            node_.replicate_log_callback();
+
 			//nothings to replicate
 			if(next_index_ > node_.last_log_index())
             {
-                logger_debug(1, 2, "nothing to replicate.break");
+                logger_debug(PEER_SECTION, 10, "nothing to replicate.break");
                 break;
             }
 
@@ -302,7 +308,7 @@ namespace raft
         std::string data = req.SerializeAsString();
         acl_assert(data.size());
 
-        logger_debug(1,2,"---------pb_call----------");
+        logger_debug(PEER_SECTION,10,"---------pb_call----------");
 		status_t status = rpc_client_.pb_call(
 			election_service_path_, 
 			req, 
@@ -310,7 +316,7 @@ namespace raft
 
 		if (!status)
 		{
-			logger_error("proto_call error.%s",
+			logger_error("------proto_call error.%s--------",
 				status.error_str_.c_str());
 			return;
 		}
@@ -320,6 +326,8 @@ namespace raft
 
 	bool peer::wait_event(int &event)
 	{
+        event = 0;
+
         timespec timeout;
 
         timeout.tv_sec = last_replicate_time_.tv_sec;
@@ -332,6 +340,7 @@ namespace raft
         //has event. just do it .don't wait anymore
         if (event_ != 0)
         {
+			logger_debug(PEER_SECTION,10,"has event :%d", event);
             event = event_;
             event_ = 0;
             acl_pthread_mutex_unlock(&mutex_);
@@ -351,13 +360,16 @@ namespace raft
             * when cond timeout. it is time to send empty log
             */
             if (status == ACL_ETIMEDOUT)
-                SET_TO_REPLICATE(event_);
+			{
+				logger_debug(PEER_SECTION, 5, "time to send heartbeat msg");
+				SET_TO_REPLICATE(event_);
+			}
         } else
         {
             //node is not leader.wait without timeout
             acl_pthread_cond_wait(&cond_,&mutex_);
         }
-
+        logger_debug(PEER_SECTION, 10, "event_:%d", event_);
 		event = event_;
         event_ = 0;
 		acl_pthread_mutex_unlock(&mutex_);

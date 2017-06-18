@@ -143,7 +143,12 @@ namespace raft
 				entries,
 				bytes))
 			{
-				logger_error("read log error");
+				logger("read log error. "
+                       "last_log_index(%llu),"
+                       "index(%llu)",
+                       last_index(),
+                       begin);
+
 				log_->dec_ref();
 				break;
 			}

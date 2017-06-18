@@ -1,7 +1,4 @@
 #include "raft.hpp"
-#ifndef _WIN32
-#include<sys/mman.h>
-#endif
 #define __MAGIC_START__ 123456789
 #define __MAGIC_END__   987654321
 #define __64k__			(64*1024)
@@ -171,6 +168,7 @@ namespace raft
 
     log_index_t mmap_log::write(const log_entry & entry)
     {
+
         acl::lock_guard lg(write_locker_);
 		
 		//write buffer offset
@@ -212,6 +210,11 @@ namespace raft
         if (start_index_ == 0)
             start_index_ = last_index_;
 
+        logger_debug(1, 10,
+                     "index(%lu) "
+                     "term(%lu)",
+                     entry.index(),
+                     entry.term());
         return index;
     }
 
@@ -287,6 +290,7 @@ namespace raft
         unsigned char *buffer = get_data_buffer(index);
         if (!buffer)
         {
+            logger("index(%llu) error", index);
             return false;
         }
 
@@ -302,21 +306,20 @@ namespace raft
 
             if (!get_entry(buffer, entry))
                 break;
+            entries.push_back(entry);
+
+            bytes += static_cast<int>(entry.ByteSizeLong());
 
             max_bytes -= static_cast<int>(entry.ByteSizeLong());
             --max_count;
 
             if (max_bytes <= 0 || max_count <= 0)
                 break;
-
-            entries.push_back(entry);
-            bytes += static_cast<int>(entry.ByteSizeLong());
-
             //read the last one
             if (entry.index() == last_index())
                 break;;
         }
-        return entries.size() ? true:false;
+        return entries.size() != 0;
     }
 
     bool mmap_log::read(log_index_t index, log_entry &entry)
@@ -563,71 +566,6 @@ namespace raft
             return NULL;
 
         return index_buf_ + offset;
-    }
-
-    void * mmap_log::open_mmap(ACL_FILE_HANDLE fd, size_t maxlen)
-    {
-        void *data = NULL;
-
-#ifdef ACL_UNIX
-        if(ftruncate(fd, maxlen) == -1)
-        {
-            logger_error("ftruncate error.:%s", acl::last_serror());
-            return NULL;
-        }
-
-        data = mmap(
-                NULL,
-                maxlen,
-                PROT_READ | PROT_WRITE,
-                MAP_SHARED,
-                fd,
-                0);
-
-        if (data == MAP_FAILED)
-            logger_error("mmap error: %s", acl_last_serror());
-
-#elif defined(_WIN32) || defined(_WIN64)
-
-        ACL_FILE_HANDLE hmap =
-			CreateFileMapping(
-				fd,
-				NULL,
-				PAGE_READWRITE,
-				0,
-				static_cast<DWORD>(maxlen),
-				NULL);
-
-		if (!hmap)
-			logger_error("CreateFileMapping: %s", acl_last_serror());
-
-		data = MapViewOfFile(
-			hmap,
-			FILE_MAP_READ | FILE_MAP_WRITE,
-			0,
-			0,
-			0);
-
-		if (!data)
-			logger_error("MapViewOfFile error: %s",
-				acl_last_serror());
-
-		acl_assert(CloseHandle(hmap));
-#else
-		logger_error("%s: not supported yet!", __FUNCTION__);
-#endif
-        return data;
-    }
-
-    void mmap_log::close_mmap(void *map, size_t map_size)
-    {
-#if defined (_WIN32) || defined(_WIN64)
-        (void)map_size;
-		acl_assert(FlushViewOfFile(map, 0));
-		acl_assert(UnmapViewOfFile(map));
-#elif defined (linux)
-        munmap(map, map_size);
-#endif
     }
 
     mmap_log_manager::mmap_log_manager(const std::string &log_path)

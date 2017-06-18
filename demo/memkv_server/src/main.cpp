@@ -17,12 +17,14 @@ int main(int argc, char *argv[])
 
     const char* logfile = "test.log";
     const char* pro_name = "memkv";
-    const char* cfg = "1:100; 2:100; 3:100";
+    const char* cfg = "1:100; 10:100; 11:100";
 
     // 在程序初始化时打开日志
     logger_open(logfile, pro_name, cfg);
     acl::log::stdout_open(true);
 
+	//remove old log.
+	remove(logfile);
 	//default addr
 	const char* addr = "127.0.0.1:11081";
 
