@@ -1,3 +1,5 @@
+#include <cstring>
+#include <map>
 #include "raft.hpp"
 
 #ifndef __LOG_EXT__ 
@@ -10,7 +12,10 @@ namespace raft
 	log_manager::log_manager(const std::string &path) 
 		:path_(path)
 	{
-		if (path_.back() != '/' && path_.back() != '\\')
+		if(path_.empty())
+			logger("log path empty. and set it to \"log/\"");
+		
+		if (path_[path.size() - 1] != '/' && path_[path_.size() - 1] != '\\')
 			path_.push_back('/');
 
 		log_size_	= 4 * 1024 * 1024;
@@ -41,11 +46,11 @@ namespace raft
 			if (last_log_)
 				acl_assert(last_log_->eof());
 
-			acl::string filepath(path_.c_str());
+			acl::string file_path(path_.c_str());
 
-			filepath.format_append("%llu%s",last_index_ + 1, __LOG_EXT__);
+			file_path.format_append("%llu%s",last_index_ + 1, __LOG_EXT__);
 
-			last_log_ = create(filepath.c_str());
+			last_log_ = create(file_path.c_str());
 			if (!last_log_)
 			{
 				logger_error("create log error");
@@ -71,15 +76,19 @@ namespace raft
 
 	bool log_manager::read(log_index_t index, log_entry &entry)
 	{
-		bool result = false;
 
-		if (index > last_index() || index < start_index() || !log_count())
-			return false;
+		if (index > last_index() ||
+            index < start_index() ||
+            !log_count())
+        {
+            return false;
+        }
+
 		
 		log *log_ = find_log(index);
 		acl_assert(log_);
 
-		result = log_->read(index, entry);
+		bool result = log_->read(index, entry);
 		log_->dec_ref();
 
 		return result;
@@ -96,7 +105,7 @@ namespace raft
 			{
 				_log->auto_delete(true);
 				_log->dec_ref();
-				it = logs_.erase(it);
+				logs_.erase(it++);
 				continue;
 			}
 			_log->truncate(index);
@@ -114,8 +123,13 @@ namespace raft
 
 		do
 		{
-			if ( max_bytes <= 0 || max_count <= 0 || begin > last_index())
-				break;
+			if ( max_bytes <= 0 ||
+                    max_count <= 0 ||
+                    begin > last_index())
+            {
+                break;
+            }
+
 
 			log *log_ = find_log(begin);
 			
@@ -129,7 +143,12 @@ namespace raft
 				entries,
 				bytes))
 			{
-				logger_error("read log error");
+				logger("read log error. "
+                       "last_log_index(%llu),"
+                       "index(%llu)",
+                       last_index(),
+                       begin);
+
 				log_->dec_ref();
 				break;
 			}
@@ -172,7 +191,7 @@ namespace raft
 		return last_term_;
 	}
 
-	std::map<log_index_t, log_index_t> log_manager::logs_info()
+	log_infos_t log_manager::logs_info()
 	{
 		acl::lock_guard lg(locker_);
 
@@ -200,7 +219,7 @@ namespace raft
 				std::string filepath = it->second->file_path();
 				it->second->auto_delete(true);
 				it->second->dec_ref();
-				it = logs_.erase(it);
+				logs_.erase(it++);
 				del_count_++;
 				logger("log_manager discard %s log", filepath.c_str());
 			}
@@ -211,7 +230,7 @@ namespace raft
 		return del_count_;
 	}
 
-	void log_manager::set_log_size(int log_size)
+	void log_manager::set_log_size(size_t log_size)
 	{
 		log_size_ = log_size;
 	}
@@ -255,7 +274,7 @@ namespace raft
 		acl::lock_guard lg(locker_);
 
 		acl::scan_dir scan;
-		const char* filepath = NULL;
+		const char* file_path = NULL;
 
 		std::map<log_index_t, log*>::iterator it = logs_.begin();
 
@@ -265,20 +284,25 @@ namespace raft
 		}
 		logs_.clear();
 
-		if (scan.open(path_.c_str(), false) == false)
+		if (!scan.open(path_.c_str(), false))
 		{
 			logger_error("scan open error %s\r\n",
 				acl::last_serror());
 			return;
 		}
 
-		while ((filepath = scan.next_file(true)) != NULL)
+		while ((file_path = scan.next_file(true)) != NULL)
 		{
-			if (acl_strrncasecmp(filepath, 
+			if (acl_strrncasecmp(file_path,
 				__LOG_EXT__, strlen(__LOG_EXT__)) == 0)
 			{
-				std::string logfile= std::string(filepath);
+				std::string logfile= std::string(file_path);
 				log *_log = create(logfile);
+				if(!_log)
+				{
+					logger_error("create log error");
+					continue;
+				}
 				//delete empty log
 				if (_log->empty())
 				{

@@ -1,5 +1,6 @@
 #pragma once
 namespace raft
+
 {
 	
 	struct version;
@@ -31,7 +32,7 @@ namespace raft
 		term_t term_;
 	};
 
-	inline bool operator <(const version& left, const version& right);
+	bool operator <(const version& left, const version& right);
 
 	struct apply_callback
 	{
@@ -148,7 +149,7 @@ namespace raft
 		 */
 		bool is_leader();
 		
-		/**
+		/**```
 		 * \brief get cluster leader id
 		 * \return id of leader, it maybe empty when cluster has not leader,
 		 * or this node lose connect to cluster.
@@ -242,7 +243,8 @@ namespace raft
 		* \param resp vote_response resp
 		* \return return true
 		*/
-		bool handle_vote_request(const vote_request &req, vote_response &resp);
+		bool handle_vote_request(const vote_request &req,
+                                 vote_response &resp);
 
 		/**
 		* \brief this interface should regist to server to process 
@@ -256,8 +258,8 @@ namespace raft
 		* \return return true
 		*/
 		bool handle_replicate_log_request(
-			const replicate_log_entries_request &req,
-			replicate_log_entries_response &resp);
+                const replicate_log_entries_request &req,
+				replicate_log_entries_response &resp);
 
 		/**
 		* \brief this interface should regist to server to process install_snapshot_request 
@@ -267,11 +269,17 @@ namespace raft
 		* \param resp install_snapshot_response to send back to leader
 		* \return return true
 		*/
-		bool handle_install_snapshot_requst(
-			const install_snapshot_request &req, 
-			install_snapshot_response &resp);
+		bool handle_install_snapshot_request(
+				const install_snapshot_request &req,
+				install_snapshot_response &resp);
 
-	private:
+        /**
+         * start raft node.before invoke start.
+         * U need to set node config done.
+         */
+        void start();
+
+    private:
 		enum role_t
 		{
 			E_LEADER,//leader
@@ -283,16 +291,18 @@ namespace raft
 		friend class log_compaction;
 		friend class election_timer;
 
-		void init();
+		void load_last_snapshot_info();
 
 		//for peer
 		/**
 		 * \brief check is candicate
 		 * \return true if candicate,otherwise return false;
 		 */
-		bool is_candicate();
+		bool is_candidate();
 
 		log_index_t last_log_index() const;
+
+        term_t last_log_term()const;
 
 		log_index_t last_snapshot_index();
 
@@ -312,9 +322,9 @@ namespace raft
 
 		void set_committed_index(log_index_t index);
 
-		role_t role();
+		int role();
 
-		void set_role(role_t _role);
+		void set_role(int _role);
 
 		std::string vote_for();
 
@@ -323,9 +333,9 @@ namespace raft
 		void set_applied_index(log_index_t index);
 
 		bool build_replicate_log_request(
-			replicate_log_entries_request &requst, 
+			replicate_log_entries_request &request,
 			log_index_t index,
-			int entry_size = 0) const;
+			int entry_size = 0);
 
 		std::vector<log_index_t> get_peers_match_index();
 
@@ -396,6 +406,8 @@ namespace raft
 
 		void invoke_replicate_callback(replicate_callback::status_t status);
 
+        void notify_replicate_failed();
+
 		void make_log_entry(const std::string &data, log_entry &entry);
 
 		bool write_log(const std::string &data, 
@@ -421,8 +433,8 @@ namespace raft
 			node &node_;
 			bool do_apply_;
 			bool to_stop_;
-			acl_pthread_mutex_t *mutex_;
-			acl_pthread_cond_t *cond_;
+			acl_pthread_mutex_t mutex_;
+			acl_pthread_cond_t cond_;
 		};
 
 		/**
@@ -436,7 +448,10 @@ namespace raft
 			void do_compact_log();
 		private:
 			virtual void* run();
+			acl_pthread_mutex_t mutex_;
+			acl_pthread_cond_t cond_;
 			node &node_;
+			bool do_compact_log_;
 		};
 
 		class election_timer : acl::thread
@@ -454,8 +469,8 @@ namespace raft
 			bool cancel_;
 			bool stop_;
 			unsigned int delay_;
-			acl_pthread_mutex_t *mutex_;
-			acl_pthread_cond_t *cond_;
+			acl_pthread_mutex_t mutex_;
+			acl_pthread_cond_t cond_;
 		};
 	private:
 		typedef std::map<version, replicate_callback*> replicate_callbacks_t;
@@ -467,7 +482,7 @@ namespace raft
 		log_index_t committed_index_;
 		log_index_t applied_index_;
 		term_t		current_term_;
-		role_t		role_;
+		int		role_;
 		std::string raft_id_;
 		std::string leader_id_;
 		std::string vote_for_;

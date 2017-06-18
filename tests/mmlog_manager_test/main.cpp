@@ -9,8 +9,11 @@ log_manager *log_manager_;
 
 void create_log_manger()
 {
+    mkdir("mmap_log_manger_test",S_IRWXU|S_IRGRP|S_IXGRP|S_IROTH);
 	log_manager_ = 
 		new mmap_log_manager("mmap_log_manger_test/");
+
+    log_manager_->reload_logs();
 }
 void close_log_manager()
 {
@@ -18,6 +21,13 @@ void close_log_manager()
 	log_manager_ = NULL;
 }
 
+char buffer[64];
+char *to_string(int value)
+{
+	memset(buffer, 0, sizeof(buffer));
+	sprintf(buffer, "%d", value);
+	return  buffer;
+}
 void write(int begin, int end)
 {
 	//write
@@ -25,10 +35,11 @@ void write(int begin, int end)
 	{
 		log_entry entry;
 		entry.set_term(1);
-		entry.set_type(log_entry_type::e_raft_log);
+		entry.set_type(e_raft_log);
 
 		std::string buffer(1000, 'a');
-		buffer += std::to_string(i);
+		buffer += to_string(i);
+
 		entry.mutable_log_data()->append(buffer);
 		log_manager_->write(entry);
 	}

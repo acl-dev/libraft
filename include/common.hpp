@@ -124,7 +124,8 @@ namespace raft
 	}
 
 
-	inline void put_message(unsigned char *&buffer_, const google::protobuf::Message &msg)
+	inline void put_message(unsigned char *&buffer_,
+							const google::protobuf::Message &msg)
 	{
 		size_t len = msg.ByteSizeLong();
 		put_uint32(buffer_, static_cast<unsigned int>(len + sizeof(int)));
@@ -132,7 +133,8 @@ namespace raft
 		buffer_ += len;
 	}
 	
-	inline bool get_message(unsigned char *&buffer_, google::protobuf::Message &entry)
+	inline bool get_message(unsigned char *&buffer_,
+							google::protobuf::Message &entry)
 	{
 		unsigned int len = get_uint32(buffer_) - sizeof(int);
 		bool rc = entry.ParseFromArray(buffer_, static_cast<int>(len));
@@ -147,18 +149,19 @@ namespace raft
 		unsigned char *plen = len;
 
 		put_uint32(plen, value);
-		if (_stream.write(len, sizeof(int)) != sizeof(int))
-			return false;
-		return true;
+		return _stream.write(len, sizeof(int)) == sizeof(int);
 	}
 	inline bool write(acl::ostream &_stream, const std::string &data)
 	{
 		if (!write(_stream, static_cast<unsigned int>(data.size())))
 			return false;
-		if (_stream.write(data.c_str(), data.size()) != 
-			static_cast<int>(data.size()))
-			return false;
-		return true;
+		
+		//empty data.
+		if (data.size() == 0)
+			return true;
+
+		return _stream.write(data.c_str(), data.size()) == 
+			static_cast<int>(data.size());
 	}
 	
 	inline bool read(acl::istream &_stream, unsigned int &value)
@@ -175,7 +178,7 @@ namespace raft
 	inline bool read(acl::istream &_stream, std::string &buffer)
 	{
 		unsigned int size = 0;
-		if (!read(_stream, buffer))
+		if (!read(_stream, size))
 			return false;
 		//empty string
 		if (size == 0)
@@ -199,4 +202,71 @@ namespace raft
 	{
 		return !(left == right);
 	}
+    //mmap
+
+    inline void *open_mmap(ACL_FILE_HANDLE fd, size_t max_len)
+    {
+        void *data = NULL;
+
+#ifdef ACL_UNIX
+        if(ftruncate(fd, max_len) == -1)
+        {
+            logger_error("ftruncate error.:%s", acl::last_serror());
+            return NULL;
+        }
+
+        data = mmap(
+                NULL,
+                max_len,
+                PROT_READ | PROT_WRITE,
+                MAP_SHARED,
+                fd,
+                0);
+
+        if (data == MAP_FAILED)
+            logger_error("mmap error: %s", acl_last_serror());
+
+#elif defined(_WIN32) || defined(_WIN64)
+        (void)max_len;
+
+        ACL_FILE_HANDLE hmap =
+			CreateFileMapping(
+				fd,
+				NULL,
+				PAGE_READWRITE,
+				0,
+				static_cast<DWORD>(max_len),
+				NULL);
+
+		if (!hmap)
+			logger_error("CreateFileMapping: %s", acl_last_serror());
+
+		data = MapViewOfFile(
+			hmap,
+			FILE_MAP_READ | FILE_MAP_WRITE,
+			0,
+			0,
+			0);
+
+		if (!data)
+			logger_error("MapViewOfFile error: %s",
+				acl_last_serror());
+
+		acl_assert(CloseHandle(hmap));
+#else
+		logger_error("%s: not supported yet!", __FUNCTION__);
+#endif
+        return data;
+    }
+
+    inline void close_mmap(void *map, size_t map_size)
+    {
+#if defined (_WIN32) || defined(_WIN64)
+        (void)map_size;
+		acl_assert(FlushViewOfFile(map, 0));
+		acl_assert(UnmapViewOfFile(map));
+#elif defined (linux)
+        munmap(map, map_size);
+#endif
+    }
 }

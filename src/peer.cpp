@@ -1,21 +1,19 @@
 #include "raft.hpp"
-#define  __1MB__ 1024 * 1024
+#define  __1MB__      (1024 * 1024)
 #define TO_REPLICATE  0x01
 #define TO_ELECTION   0x02
 #define TO_STOP       0x04
 
-#define RESET_EVENT(e)		  e = 0
-#define SET_TO_REPLICATE(e)   e |= TO_REPLICATE
-#define SET_TO_ELECTION(e)    e |= TO_ELECTION
-#define SET_TO_STOP(e)        e |= TO_STOP
-
-#define RESET_TO_REPLICATE(e) e &= ~TO_REPLICATE
-#define RESET_TO_ELECTION(e)  e &= ~TO_ELECTION
-#define RESET_TO_STOP(e)      e &= ~TO_STOP
+#define RESET_EVENT(e)		  (e = 0)
+#define SET_TO_REPLICATE(e)   (e |= TO_REPLICATE)
+#define SET_TO_ELECTION(e)    (e |= TO_ELECTION)
+#define SET_TO_STOP(e)        (e |= TO_STOP)
 
 #define IS_TO_REPLICATE(e)    (e & TO_REPLICATE)
 #define IS_TO_STOP(e)         (e & TO_STOP)
 #define IS_TO_ELECTION(e)     (e & TO_ELECTION)
+
+#define PEER_SECTION 10
 
 
 namespace raft
@@ -23,63 +21,61 @@ namespace raft
 
 	peer::peer(node &_node, const std::string &peer_id)
 		:node_(_node),
-		peer_id_(peer_id),
-		match_index_(node_.last_log_index()),
-		next_index_(match_index_ + 1),
-	    event_(0),
-		heart_inter_(3*1000),
-		rpc_faileds_(0),
-		req_id_(1)
+         peer_id_(peer_id),
+         match_index_(node_.last_log_index()),
+         next_index_(match_index_ + 1),
+         event_(0),
+         heart_inter_(3*1000),
+         rpc_client_(acl::http_rpc_client::get_instance()),
+         rpc_fails_(0),
+         req_id_(1)
 	{
 		//server_id/raft/interface
 		replicate_service_path_.format(
-			"/%s/raft/replicate_log_req", peer_id_.c_str());
+			"/memkv%s/raft/replicate_log_req", peer_id_.c_str());
 
 		install_snapshot_service_path_.format(
-			"/%s/raft/install_snapshot_req", peer_id_.c_str());
+			"/memkv%s/raft/install_snapshot_req", peer_id_.c_str());
 
 		election_service_path_.format(
-			"/%s/raft/vote_req", peer_id_.c_str());
-
-
-		acl_pthread_mutexattr_t attr;
+			"/memkv%s/raft/vote_req", peer_id_.c_str());
 
 		//send heartbeat to sync log index first
-		cond_ = acl_thread_cond_create();
-		mutex_ = static_cast<acl_pthread_mutex_t*>(
-			acl_mymalloc(sizeof(acl_pthread_mutex_t)));
-		acl_pthread_mutex_init(mutex_, &attr);
+		acl_pthread_mutex_init(&mutex_, NULL);
+		acl_pthread_cond_init(&cond_, NULL);
+
+        //init last_replicate_time_
+        gettimeofday(&last_replicate_time_, NULL);
+
 		start();
 	}
 	peer::~peer()
 	{
-		if (!IS_TO_STOP(event_))
-		{
-			notify_stop();
-		}
+		//notify thread to stop
+		notify_stop();
 		wait();
 	}
-	void peer::notify_repliate()
+	void peer::notify_replicate()
 	{
-		acl_pthread_mutex_lock(mutex_);
+		acl_pthread_mutex_lock(&mutex_);
 		if (!IS_TO_REPLICATE(event_))
 		{
 			SET_TO_REPLICATE(event_);
-			acl_pthread_cond_signal(cond_);
+			acl_pthread_cond_signal(&cond_);
 		}
-		acl_pthread_mutex_unlock(mutex_);
+		acl_pthread_mutex_unlock(&mutex_);
 
 	}
 
 	void peer::notify_election()
 	{
-		acl_pthread_mutex_lock(mutex_);
+		acl_pthread_mutex_lock(&mutex_);
 		if (!IS_TO_ELECTION(event_))
 		{
 			SET_TO_ELECTION(event_);
-			acl_pthread_cond_signal(cond_);
+			acl_pthread_cond_signal(&cond_);
 		}
-		acl_pthread_mutex_unlock(mutex_);
+		acl_pthread_mutex_unlock(&mutex_);
 	}
 	void peer::set_next_index(log_index_t index)
 	{
@@ -99,19 +95,18 @@ namespace raft
 		return match_index_;
 	}
 
-	
-
 	void* peer::run()
 	{
 		int event = 0;
 		while(wait_event(event))
 		{
+            logger_debug(PEER_SECTION, 10, "event:%x", event);
 			if (IS_TO_REPLICATE(event) && node_.is_leader())
 			{
 				do_replicate();
 			}
 
-			if (IS_TO_REPLICATE(event))
+			if (IS_TO_ELECTION(event))
 			{
 				do_election();
 			}
@@ -121,18 +116,20 @@ namespace raft
 
 	bool peer::do_install_snapshot()
 	{
+        logger_debug(PEER_SECTION,10,"trace");
+
 		typedef acl::http_rpc_client::status_t status_t;
 
-		std::string filepath;
+		std::string file_path;
 		acl::ifstream file;
 		version ver;
 
-		if (!node_.get_snapshot(filepath))
+		if (!node_.get_snapshot(file_path))
 		{
 			logger_error("get snapshot failed");
 			return false;
 		}
-		if (!file.open_read(filepath.c_str()))
+		if (!file.open_read(file_path.c_str()))
 		{
 			logger_error("open snapshot failed");
 			return false;
@@ -142,8 +139,8 @@ namespace raft
 			logger_error("snapshot read version failed.");
 			return false;
 		}
-		size_t file_size =  file.fsize();
-		size_t offset = 0;
+		long long int file_size =  file.fsize();
+		long long int offset = 0;
 
 		while (node_.is_leader())
 		{
@@ -169,7 +166,7 @@ namespace raft
 			req.mutable_snapshot_info()->
 				set_last_snapshot_index(ver.index_);
 
-			status_t status = rpc_client_->proto_call(
+			status_t status = rpc_client_.pb_call(
 				install_snapshot_service_path_,
 				req, 
 				resp);
@@ -181,7 +178,7 @@ namespace raft
 			}
 			if (node_.current_term() < resp.term())
 			{
-				logger("recevie new term.%d",resp.term());
+				logger("receive new term.%zd",resp.term());
 				node_.handle_new_term(resp.term());
 				return false;
 			}
@@ -199,11 +196,12 @@ namespace raft
 		return false;
 	}
 	/*
-	 *If last log index ¡Ý nextIndex for a follower: send 
+	 *If last log index  nextIndex for a follower: send 
 	 *AppendEntries RPC with log entries starting at nextIndex 
-	 *If successful: update nextIndex and matchIndex for follower (¡ì5.3) 
+	 *If successful: update nextIndex and matchIndex for follower (ï¿½ï¿½5.3) 
 	 *If AppendEntries fails because of log inconsistency: 
-	 *decrement nextIndex and retry (¡ì5.3)	 */
+	 *decrement nextIndex and retry (ï¿½ï¿½5.3)
+	 */
 	void peer::do_replicate()
 	{
 		int entry_size = 1;
@@ -214,14 +212,17 @@ namespace raft
 			replicate_log_entries_response resp;
 			acl::http_rpc_client::status_t status;
 
+            logger_debug(PEER_SECTION, 10, "next_index_(%llu)", next_index_);
 			if (!node_.build_replicate_log_request(
 				req, 
 				next_index_, 
 				entry_size))
 			{
-				logger("build_replicate_log_request "
-					"failed. next_index_:%d",
-					next_index_);
+				logger_debug(PEER_SECTION, 10,
+                             "build_replicate_log_request "
+                             "failed. next_index_:%llu",
+                             next_index_);
+
 				if (!do_install_snapshot())
 				{
 					logger_error("do_install_snapshot error.");
@@ -229,23 +230,35 @@ namespace raft
 				}
 				continue;
 			}
-			status = rpc_client_->proto_call(
+            logger_debug(PEER_SECTION,2,
+                         "===============pb_call=============");
+
+            req.set_req_id(++req_id_);
+
+			//for next heartbeat time;
+			gettimeofday(&last_replicate_time_, NULL);
+
+			status = rpc_client_.pb_call(
 				replicate_service_path_,
 				req,
 				resp);
+
 			if (!status)
 			{
 				logger_error("proto_call error.%s", 
 					status.error_str_.c_str());
-				rpc_faileds_++;
+				rpc_fails_++;
 				break;
 			}
+
+            logger_debug(PEER_SECTION,10,"pb_call done");
 
 			if (!resp.success())
 			{
 				term_t current_term = node_.current_term();
 				if (current_term < resp.term())
 				{
+                    logger_debug(1, 2,"receive new handle");
 					node_.handle_new_term(resp.term());
 					break;
 				}
@@ -255,91 +268,125 @@ namespace raft
 				match_index_ = 0;
 				continue;
 			}
-			//for next heartbeat time;
-			gettimeofday(&last_replicate_time_, NULL);
+            logger_debug(PEER_SECTION,10,"replicate ok");
 
-			node_.replicate_log_callback();
 
-			//
+			//update peer metadata
 			entry_size = 0;
 			match_index_ = resp.last_log_index();
 			next_index_ = match_index_ + 1;
-			
+
+            //callback to node
+            node_.replicate_log_callback();
+
 			//nothings to replicate
 			if(next_index_ > node_.last_log_index())
-				break;
+            {
+                logger_debug(PEER_SECTION, 10, "nothing to replicate.break");
+                break;
+            }
+
 		}		
 	}
 
-	void peer::do_election()const
+	void peer::do_election()
 	{
-		if (!node_.is_candicate())
+		logger("start election");
+		if (!node_.is_candidate())
+		{
+			logger("node is not candidate return");
 			return;
+		}
+
 		typedef acl::http_rpc_client::status_t status_t;
 		vote_request req;
 		vote_response resp;
 		//async req need req_id_.keep it for the further
-		req.set_req_id(req_id_);
+		req.set_req_id(++req_id_);
 		node_.build_vote_request(req);
 
-		status_t status = rpc_client_->proto_call(
+        std::string data = req.SerializeAsString();
+        acl_assert(data.size());
+
+        logger_debug(PEER_SECTION,10,"---------pb_call----------");
+		status_t status = rpc_client_.pb_call(
 			election_service_path_, 
 			req, 
 			resp);
 
 		if (!status)
 		{
-			logger_error("proto_call error.%s",
+			logger_error("------proto_call error.%s--------",
 				status.error_str_.c_str());
 			return;
 		}
+		logger("election proto_call ok.");
 		node_.vote_response_callback(peer_id_, resp);
 	}
 
 	bool peer::wait_event(int &event)
 	{
-		timespec timeout;
+        event = 0;
 
-		timeout.tv_sec = last_replicate_time_.tv_sec;
-		timeout.tv_nsec = last_replicate_time_.tv_usec * 1000;
+        timespec timeout;
 
-		timeout.tv_sec += heart_inter_ / 1000;
-		timeout.tv_nsec += heart_inter_ % 1000 * 1000 * 1000;
+        timeout.tv_sec = last_replicate_time_.tv_sec;
+        timeout.tv_nsec = last_replicate_time_.tv_usec * 1000;
 
-		acl_pthread_mutex_lock(mutex_);
-		if (!!event_)
-		{
-			event = event_;
-			RESET_EVENT(event_);
-			acl_pthread_mutex_unlock(mutex_);
-			return !IS_TO_STOP(event_);
-		}
-		int status = acl_pthread_cond_timedwait(cond_, mutex_, &timeout);
-		/*
-		* check_heartbeart() for repeat during idle 
-		* periods to prevent election timeouts (¡ì5.2)
-		* when cond timeout. it is time to send empty log		*/
-		if (status == ACL_ETIMEDOUT)
-			SET_TO_REPLICATE(event_);
+        timeout.tv_sec += heart_inter_ / 1000;
+        timeout.tv_nsec += heart_inter_ % 1000 * 1000 * 1000;
+
+        acl_pthread_mutex_lock(&mutex_);
+        //has event. just do it .don't wait anymore
+        if (event_ != 0)
+        {
+			logger_debug(PEER_SECTION,10,"has event :%d", event);
+            event = event_;
+            event_ = 0;
+            acl_pthread_mutex_unlock(&mutex_);
+            return !IS_TO_STOP(event_);
+        }
+
+        if(node_.is_leader())
+        {
+            int status = acl_pthread_cond_timedwait(&cond_,
+                                                    &mutex_,
+                                                    &timeout);
+            if(status == -1)
+                logger_error("acl_pthread_cond_timedwait error");
+            /*
+            * check_heartbeat() for repeat during idle
+            * periods to prevent election timeouts (5.2)
+            * when cond timeout. it is time to send empty log
+            */
+            if (status == ACL_ETIMEDOUT)
+			{
+				logger_debug(PEER_SECTION, 5, "time to send heartbeat msg");
+				SET_TO_REPLICATE(event_);
+			}
+        } else
+        {
+            //node is not leader.wait without timeout
+            acl_pthread_cond_wait(&cond_,&mutex_);
+        }
+        logger_debug(PEER_SECTION, 10, "event_:%d", event_);
 		event = event_;
-		RESET_EVENT(event_);
-		acl_pthread_mutex_unlock(mutex_);
+        event_ = 0;
+		acl_pthread_mutex_unlock(&mutex_);
 
 		return !IS_TO_STOP(event_);
 	}
 
 	void peer::notify_stop()
 	{
-		acl_pthread_mutex_lock(mutex_);
+		acl_pthread_mutex_lock(&mutex_);
 		if (!IS_TO_STOP(event_))
 		{
 			SET_TO_STOP(event_);
-			acl_pthread_cond_signal(cond_);
-			acl_pthread_mutex_unlock(mutex_);
-			//wait for thread to eixt;
-			wait();
+			acl_pthread_cond_signal(&cond_);
+			acl_pthread_mutex_unlock(&mutex_);
 			return;
 		}
-		acl_pthread_mutex_unlock(mutex_);
+		acl_pthread_mutex_unlock(&mutex_);
 	}
 }

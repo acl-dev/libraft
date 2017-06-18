@@ -56,10 +56,7 @@ namespace raft
 
 		unsigned char* get_index_buffer(log_index_t index);
 
-		static void *open_mmap(ACL_FILE_HANDLE fd, size_t maxlen);
-
-		static void close_mmap(void *map, size_t map_size);
-
+    private:
 		bool is_open_;
 		bool eof_;
 
@@ -91,6 +88,6 @@ namespace raft
 		* \param filepath mmap_log
 		* \return mmap_log if ok.or NULL
 		*/
-		virtual log *create(const std::string &filepath) override;
+		virtual log *create(const std::string &file_path) ;
 	};
 }
