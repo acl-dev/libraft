@@ -22,7 +22,6 @@ namespace raft
 		last_index_ = 0;
 		last_log_	= NULL;
 		last_term_	= 0;
-		reload_logs();
 	}
 
 	log_manager::~log_manager()
@@ -294,6 +293,11 @@ namespace raft
 			{
 				std::string logfile= std::string(file_path);
 				log *_log = create(logfile);
+				if(!_log)
+				{
+					logger_error("create log error");
+					continue;
+				}
 				//delete empty log
 				if (_log->empty())
 				{

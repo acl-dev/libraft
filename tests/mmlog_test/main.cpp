@@ -38,7 +38,7 @@ void test_write(mmap_log &log)
 		log_entry entry;
 		entry.set_index(i);
 		entry.set_term(i);
-		entry.set_type(log_entry_type::e_raft_log);
+		entry.set_type(e_raft_log);
 		entry.set_log_data(std::string("hello"));
 
 		acl_assert(log.write(entry));

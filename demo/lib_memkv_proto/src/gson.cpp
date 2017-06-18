@@ -1,4 +1,5 @@
 #include "acl_cpp/lib_acl.hpp"
+#include "addr_info.h"
 #include "raft_config.h"
 #include "cluster_config.h"
 #include "memkv_proto.h"

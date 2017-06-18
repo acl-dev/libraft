@@ -1,7 +1,8 @@
 #include "acl_cpp/lib_acl.hpp"
 #include "lib_acl.h"
-#include "memkv_proto.h"
+#include "addr_info.h"
 #include "raft_config.h"
+#include "memkv_proto.h"
 #include "cluster_config.h"
 #include "gson.h"
 #include "raft.hpp"
@@ -184,6 +185,9 @@ void memkv_service::init()
 	init_http_rpc_client();
 	init_raft_node();
 	regist_service();
+
+    //start node
+    node_->start();
 }
 void memkv_service::load_config()
 {
@@ -197,10 +201,13 @@ void memkv_service::load_config()
 			acl::last_serror());
 		return;
 	}
+
 	acl::string data;
 	acl_assert(file.load(&data));
 
-	std::pair<bool, std::string> ret = acl::gson(data.c_str(), cfg_);
+	std::pair<bool, std::string> ret =
+			acl::gson(data.c_str(), cfg_);
+
 	if (!ret.first)
 	{
 		logger_fatal("gson error.%s", ret.second.c_str());
@@ -211,32 +218,32 @@ void memkv_service::init_http_rpc_client()
 	acl::http_rpc_client &rpc_client = 
 		acl::http_rpc_client::get_instance();
 
-	std::vector<std::string> service_paths;
+	std::vector<std::string> paths;
 
-	service_paths.push_back("raft/replicate_log_req");
-	service_paths.push_back("raft/install_snapshot_req");
-	service_paths.push_back("raft/vote_req");
+    paths.push_back("raft/vote_req");
+	paths.push_back("raft/replicate_log_req");
+	paths.push_back("raft/install_snapshot_req");
+
 
 	for (size_t i = 0; i < cfg_.peer_addrs.size(); i++)
 	{
-		for (size_t j = 0; j < service_paths.size(); j++)
+		for (size_t j = 0; j < paths.size(); j++)
 		{
 			acl::string service_path;
 			const char *addr = cfg_.peer_addrs[i].addr.c_str();
+			const char *id = cfg_.peer_addrs[i].id.c_str();
 
-			service_path.format("/%s/%s",
-				cfg_.peer_addrs[i].id.c_str(),
-				service_paths[j].c_str());
-			/*
-			rpc_client will manager connect_pool.
-			and it will auto reconnet
-			*/
+			service_path.format("/memkv%s/%s", id, paths[j].c_str());
+
 			rpc_client.add_service(addr, service_path);
+
 			logger("add service:"
-				"addr:%s "
-				"service_path:%s", 
-				addr, 
-				service_path.c_str());
+						   "id:%s"
+						   "addr:%s "
+						   "service_path:%s",
+						   id,
+						   addr,
+						   service_path.c_str());
 		}
 	}
 }
@@ -244,8 +251,8 @@ void memkv_service::init_raft_node()
 {
 	node_ = new raft::node;
 	node_->set_log_path(cfg_.log_path);
-	node_->set_max_log_size(cfg_.max_log_size);
-	node_->set_max_log_count(cfg_.max_log_count);
+	node_->set_max_log_size((size_t) cfg_.max_log_size);
+	node_->set_max_log_count((size_t) cfg_.max_log_count);
 	node_->set_metadata_path(cfg_.metadata_path);
 	node_->set_snapshot_path(cfg_.snapshot_path);
 
@@ -265,30 +272,42 @@ void memkv_service::init_raft_node()
 }
 void memkv_service::regist_service()
 {
-	//regist service for user client
-	server_.on_json("memkv/store/get", this, &memkv_service::get);
-	server_.on_json("memkv/store/set", this, &memkv_service::set);
-	server_.on_json("memkv/store/del", this, &memkv_service::del);
-	server_.on_json("memkv/store/exist", this, &memkv_service::exist);
-
-	//regist service for raft peer
+	//server id
 	const char *id = cfg_.node_addr.id.c_str();
 	acl::string service_path;
 
+	//regist service for user client
+
+	service_path.format("/memkv%s/store/get",id);
+	server_.on_json(service_path, this, &memkv_service::get);
+
+	service_path.format("/memkv%s/store/set",id);
+	server_.on_json(service_path, this, &memkv_service::set);
+
+	service_path.format("/memkv%s/store/del",id);
+	server_.on_json(service_path, this, &memkv_service::del);
+
+	service_path.format("/memkv%s/store/exist",id);
+	server_.on_json(service_path, this, &memkv_service::exist);
+
+	//regist service for raft peer
+
+    //election req
+    service_path.format("/memkv%s/raft/vote_req", id);
+    server_.on_pb(service_path, node_,
+                  &raft::node::handle_vote_request);
+
 	//replicate req
-	service_path.format("/%s/raft/replicate_log_req", id);
+	service_path.format("/memkv%s/raft/replicate_log_req", id);
 	server_.on_pb(service_path, node_,
 		&raft::node::handle_replicate_log_request);
 
 	//snapshot req
-	service_path.format("/%s/raft/install_snapshot_req", id);
+	service_path.format("/memkv%s/raft/install_snapshot_req", id);
 	server_.on_pb(service_path, node_,
-		&raft::node::handle_install_snapshot_requst);
+                  &raft::node::handle_install_snapshot_request);
 
-	//elelction req
-	service_path.format("/%s/raft/vote_req", id);
-	server_.on_pb(service_path, node_,
-		&raft::node::handle_vote_request);
+
 
 }
 //raft from raft framework

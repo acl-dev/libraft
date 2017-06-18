@@ -3,7 +3,6 @@
 //
 
 #include <iostream>
-#include "cluster_config.h"
 #include "memkv_client.h"
 
 memkv_client client;
@@ -19,16 +18,30 @@ void init_client()
     std::pair<bool, std::string> ret = acl::gson(buffer, config);
     if(!ret.first)
         logger_error("load cluster config error");
-    client.set_cluster(config.addrs);
+    client.set_cluster(config);
+    client.print_service_info();
 }
 
 int main(int argc, char *argv[])
 {
+    acl::acl_cpp_init();
+
+    acl::log::stdout_open(true);
+
     init_client();
+
+    if(argc <2)
+        logger_fatal("param error");
+
     const char *cmd = argv[1];
+
+    std::cout << "cmd:" << cmd << std::endl;
 
     if(cmd == std::string("get"))
     {
+        if(argc != 3)
+            logger_fatal("Param Error.\n memkv_client get key");
+
         std::string key = argv[2];
 
         std::cout << client.get(key).second << std::endl;
@@ -52,5 +65,8 @@ int main(int argc, char *argv[])
         std::string key = argv[2];
 
         std::cout << client.exist(key).second << std::endl;
+    }else
+    {
+        logger("unknown cmd:%s",cmd);
     }
 }

@@ -17,10 +17,7 @@ endif()
 
 include_directories(
         include
-        ${ACL_ROOT}/lib_acl/include
-        ${memkv_proto_SOURCE_DIR}/include
-		${ACL_ROOT}/lib_acl_cpp/include
-        ${HTTP_RPC_INCLUDE_PATH})
+        ${memkv_proto_SOURCE_DIR}/include)
 
 aux_source_directory(${memkv_server_SOURCE_DIR}/src memkv_server_sources)
 
@@ -31,13 +28,7 @@ add_executable(memkv_server ${memkv_server_sources})
 
 
 target_link_libraries(memkv_server
-        libraft
         memkv_proto
-        ${HTTP_RPC_LIB_PATH}/libhttp_rpc.a
-        ${ACL_ROOT}/lib_acl_cpp/lib/lib_acl_cpp.a
-        ${ACL_ROOT}/lib_protocol/lib/libprotocol.a
-        ${ACL_ROOT}/lib_acl/lib/lib_acl.a
-        protobuf
-        pthread
-        z)
+        ${depend_libs})
+
 

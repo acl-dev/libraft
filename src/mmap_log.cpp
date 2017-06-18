@@ -43,7 +43,7 @@ namespace raft
         acl_int64 file_size = acl_file_size(filepath.c_str());
 
         //file exist
-		if (file_size != -1)
+		if (file_size > 0)
 		{
 			data_buf_size_ = (size_t)file_size;
 		}
@@ -89,7 +89,7 @@ namespace raft
         file_size = acl_file_size(index_filepath_.c_str());
 		
 		//file exist
-		if (file_size != -1)
+		if (file_size > 0)
 		{
 			index_buf_size_ = (size_t)file_size;
 		}
@@ -110,7 +110,7 @@ namespace raft
         }
 		//map file
         index_buf_ = index_wbuf_ =static_cast<unsigned char*>(
-			open_mmap(fd, (size_t) file_size));
+			open_mmap(fd, (size_t) index_buf_size_));
 		
 		//close fd.we don't need it anymore
         acl_file_close(fd);
@@ -122,6 +122,7 @@ namespace raft
                                  " %s error %s\r\n",
                          index_filepath_.c_str(),
                          acl_last_serror());
+
 			//release log data mmap
             close_mmap(data_buf_, data_buf_size_);
             data_buf_ = data_wbuf_ = NULL;
@@ -133,7 +134,7 @@ namespace raft
         {
 			//reload log .and read it start log index.and last log index.
 			//
-			if (reload_log())
+			if (!reload_log())
 			{
 				logger_error("reload log failed");
 				return false;
@@ -569,6 +570,11 @@ namespace raft
         void *data = NULL;
 
 #ifdef ACL_UNIX
+        if(ftruncate(fd, maxlen) == -1)
+        {
+            logger_error("ftruncate error.:%s", acl::last_serror());
+            return NULL;
+        }
 
         data = mmap(
                 NULL,

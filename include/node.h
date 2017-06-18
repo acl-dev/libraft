@@ -243,7 +243,8 @@ namespace raft
 		* \param resp vote_response resp
 		* \return return true
 		*/
-		bool handle_vote_request(const vote_request &req, vote_response &resp);
+		bool handle_vote_request(const vote_request &req,
+                                 vote_response &resp);
 
 		/**
 		* \brief this interface should regist to server to process 
@@ -257,8 +258,8 @@ namespace raft
 		* \return return true
 		*/
 		bool handle_replicate_log_request(
-			const replicate_log_entries_request &req,
-			replicate_log_entries_response &resp);
+                const replicate_log_entries_request &req,
+				replicate_log_entries_response &resp);
 
 		/**
 		* \brief this interface should regist to server to process install_snapshot_request 
@@ -268,11 +269,17 @@ namespace raft
 		* \param resp install_snapshot_response to send back to leader
 		* \return return true
 		*/
-		bool handle_install_snapshot_requst(
-			const install_snapshot_request &req, 
-			install_snapshot_response &resp);
+		bool handle_install_snapshot_request(
+				const install_snapshot_request &req,
+				install_snapshot_response &resp);
 
-	private:
+        /**
+         * start raft node.before invoke start.
+         * U need to set node config done.
+         */
+        void start();
+
+    private:
 		enum role_t
 		{
 			E_LEADER,//leader
@@ -284,7 +291,7 @@ namespace raft
 		friend class log_compaction;
 		friend class election_timer;
 
-		void init();
+		void load_last_snapshot_info();
 
 		//for peer
 		/**
@@ -294,6 +301,8 @@ namespace raft
 		bool is_candidate();
 
 		log_index_t last_log_index() const;
+
+        term_t last_log_term()const;
 
 		log_index_t last_snapshot_index();
 
@@ -324,9 +333,9 @@ namespace raft
 		void set_applied_index(log_index_t index);
 
 		bool build_replicate_log_request(
-			replicate_log_entries_request &requst, 
+			replicate_log_entries_request &request,
 			log_index_t index,
-			int entry_size = 0) const;
+			int entry_size = 0);
 
 		std::vector<log_index_t> get_peers_match_index();
 
@@ -396,6 +405,8 @@ namespace raft
 		void invoke_apply_callbacks();
 
 		void invoke_replicate_callback(replicate_callback::status_t status);
+
+        void notify_replicate_failed();
 
 		void make_log_entry(const std::string &data, log_entry &entry);
 

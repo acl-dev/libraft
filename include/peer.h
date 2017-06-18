@@ -24,7 +24,7 @@ namespace raft
 		 * \brief notify peer thread to replicate leader's logs to 
 		 * peer node.
 		 */
-		void notify_repliate();
+		void notify_replicate();
 		
 		/**
 		 * \brief notify peer thread to 
@@ -58,7 +58,7 @@ namespace raft
 
 		bool do_install_snapshot();
 
-		void do_election()const;
+		void do_election();
 
 		bool wait_event(int &event);
 
@@ -88,8 +88,8 @@ namespace raft
 		acl::string election_service_path_;
 		acl::string install_snapshot_service_path_;
 
-		acl::http_rpc_client *rpc_client_;
-		size_t rpc_faileds_;
+		acl::http_rpc_client &rpc_client_;
+		size_t rpc_fails_;
 		size_t req_id_;
 		
 	};

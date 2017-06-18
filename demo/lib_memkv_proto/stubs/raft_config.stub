@@ -2,11 +2,6 @@
 #include <string>
 #include <vector>
 
-struct addr_info
-{
-	std::string addr;
-	std::string id;
-};
 struct raft_config
 {
 	std::string log_path;

@@ -19,37 +19,41 @@ namespace raft
 
 	peer::peer(node &_node, const std::string &peer_id)
 		:node_(_node),
-		peer_id_(peer_id),
-		match_index_(node_.last_log_index()),
-		next_index_(match_index_ + 1),
-	    event_(0),
-		heart_inter_(3*1000),
-		rpc_faileds_(0),
-		req_id_(1)
+         peer_id_(peer_id),
+         match_index_(node_.last_log_index()),
+         next_index_(match_index_ + 1),
+         event_(0),
+         heart_inter_(1*1000),
+         rpc_client_(acl::http_rpc_client::get_instance()),
+         rpc_fails_(0),
+         req_id_(1)
 	{
 		//server_id/raft/interface
 		replicate_service_path_.format(
-			"/%s/raft/replicate_log_req", peer_id_.c_str());
+			"/memkv%s/raft/replicate_log_req", peer_id_.c_str());
 
 		install_snapshot_service_path_.format(
-			"/%s/raft/install_snapshot_req", peer_id_.c_str());
+			"/memkv%s/raft/install_snapshot_req", peer_id_.c_str());
 
 		election_service_path_.format(
-			"/%s/raft/vote_req", peer_id_.c_str());
+			"/memkv%s/raft/vote_req", peer_id_.c_str());
 
 		//send heartbeat to sync log index first
 		acl_pthread_mutex_init(&mutex_, NULL);
 		acl_pthread_cond_init(&cond_, NULL);
 
+        //init last_replicate_time_
+        gettimeofday(&last_replicate_time_, NULL);
+
 		start();
 	}
 	peer::~peer()
 	{
-		//waitup thread 
+		//notify thread to stop
 		notify_stop();
 		wait();
 	}
-	void peer::notify_repliate()
+	void peer::notify_replicate()
 	{
 		acl_pthread_mutex_lock(&mutex_);
 		if (!IS_TO_REPLICATE(event_))
@@ -89,19 +93,18 @@ namespace raft
 		return match_index_;
 	}
 
-	
-
 	void* peer::run()
 	{
 		int event = 0;
 		while(wait_event(event))
 		{
+            logger_debug(1,1,"event:%x",event);
 			if (IS_TO_REPLICATE(event) && node_.is_leader())
 			{
 				do_replicate();
 			}
 
-			if (IS_TO_REPLICATE(event))
+			if (IS_TO_ELECTION(event))
 			{
 				do_election();
 			}
@@ -111,18 +114,20 @@ namespace raft
 
 	bool peer::do_install_snapshot()
 	{
+        logger_debug(1,2,"trace");
+
 		typedef acl::http_rpc_client::status_t status_t;
 
-		std::string filepath;
+		std::string file_path;
 		acl::ifstream file;
 		version ver;
 
-		if (!node_.get_snapshot(filepath))
+		if (!node_.get_snapshot(file_path))
 		{
 			logger_error("get snapshot failed");
 			return false;
 		}
-		if (!file.open_read(filepath.c_str()))
+		if (!file.open_read(file_path.c_str()))
 		{
 			logger_error("open snapshot failed");
 			return false;
@@ -159,7 +164,7 @@ namespace raft
 			req.mutable_snapshot_info()->
 				set_last_snapshot_index(ver.index_);
 
-			status_t status = rpc_client_->proto_call(
+			status_t status = rpc_client_.pb_call(
 				install_snapshot_service_path_,
 				req, 
 				resp);
@@ -171,7 +176,7 @@ namespace raft
 			}
 			if (node_.current_term() < resp.term())
 			{
-				logger("recevie new term.%zd",resp.term());
+				logger("receive new term.%zd",resp.term());
 				node_.handle_new_term(resp.term());
 				return false;
 			}
@@ -220,7 +225,14 @@ namespace raft
 				}
 				continue;
 			}
-			status = rpc_client_->proto_call(
+            logger_debug(1,2,"---------pb_call----------");
+
+            req.set_req_id(++req_id_);
+
+            std::string data = req.SerializeAsString();
+            acl_assert(data.size());
+
+			status = rpc_client_.pb_call(
 				replicate_service_path_,
 				req,
 				resp);
@@ -228,15 +240,18 @@ namespace raft
 			{
 				logger_error("proto_call error.%s", 
 					status.error_str_.c_str());
-				rpc_faileds_++;
+				rpc_fails_++;
 				break;
 			}
+
+            logger_debug(1,2,"pb_call done");
 
 			if (!resp.success())
 			{
 				term_t current_term = node_.current_term();
 				if (current_term < resp.term())
 				{
+                    logger_debug(1, 2,"receive new handle");
 					node_.handle_new_term(resp.term());
 					break;
 				}
@@ -246,6 +261,8 @@ namespace raft
 				match_index_ = 0;
 				continue;
 			}
+            logger_debug(1,2,"replicate ok");
+
 			//for next heartbeat time;
 			gettimeofday(&last_replicate_time_, NULL);
 
@@ -258,22 +275,35 @@ namespace raft
 			
 			//nothings to replicate
 			if(next_index_ > node_.last_log_index())
-				break;
+            {
+                logger_debug(1, 2, "nothing to replicate.break");
+                break;
+            }
+
 		}		
 	}
 
-	void peer::do_election()const
+	void peer::do_election()
 	{
+		logger("start election");
 		if (!node_.is_candidate())
+		{
+			logger("node is not candidate return");
 			return;
+		}
+
 		typedef acl::http_rpc_client::status_t status_t;
 		vote_request req;
 		vote_response resp;
 		//async req need req_id_.keep it for the further
-		req.set_req_id(req_id_);
+		req.set_req_id(++req_id_);
 		node_.build_vote_request(req);
 
-		status_t status = rpc_client_->proto_call(
+        std::string data = req.SerializeAsString();
+        acl_assert(data.size());
+
+        logger_debug(1,2,"---------pb_call----------");
+		status_t status = rpc_client_.pb_call(
 			election_service_path_, 
 			req, 
 			resp);
@@ -284,37 +314,52 @@ namespace raft
 				status.error_str_.c_str());
 			return;
 		}
+		logger("election proto_call ok.");
 		node_.vote_response_callback(peer_id_, resp);
 	}
 
 	bool peer::wait_event(int &event)
 	{
-		timespec timeout;
+        timespec timeout;
 
-		timeout.tv_sec = last_replicate_time_.tv_sec;
-		timeout.tv_nsec = last_replicate_time_.tv_usec * 1000;
+        timeout.tv_sec = last_replicate_time_.tv_sec;
+        timeout.tv_nsec = last_replicate_time_.tv_usec * 1000;
 
-		timeout.tv_sec += heart_inter_ / 1000;
-		timeout.tv_nsec += heart_inter_ % 1000 * 1000 * 1000;
+        timeout.tv_sec += heart_inter_ / 1000;
+        timeout.tv_nsec += heart_inter_ % 1000 * 1000 * 1000;
 
-		acl_pthread_mutex_lock(&mutex_);
-		if (event_ != 0)
-		{
-			event = event_;
-			RESET_EVENT(event_);
-			acl_pthread_mutex_unlock(&mutex_);
-			return !IS_TO_STOP(event_);
-		}
-		int status = acl_pthread_cond_timedwait(&cond_, &mutex_, &timeout);
-		/*
-		* check_heartbeat() for repeat during idle
-		* periods to prevent election timeouts (5.2)
-		* when cond timeout. it is time to send empty log
-		*/
-		if (status == ACL_ETIMEDOUT)
-			SET_TO_REPLICATE(event_);
+        acl_pthread_mutex_lock(&mutex_);
+        //has event. just do it .don't wait anymore
+        if (event_ != 0)
+        {
+            event = event_;
+            event_ = 0;
+            acl_pthread_mutex_unlock(&mutex_);
+            return !IS_TO_STOP(event_);
+        }
+
+        if(node_.is_leader())
+        {
+            int status = acl_pthread_cond_timedwait(&cond_,
+                                                    &mutex_,
+                                                    &timeout);
+            if(status == -1)
+                logger_error("acl_pthread_cond_timedwait error");
+            /*
+            * check_heartbeat() for repeat during idle
+            * periods to prevent election timeouts (5.2)
+            * when cond timeout. it is time to send empty log
+            */
+            if (status == ACL_ETIMEDOUT)
+                SET_TO_REPLICATE(event_);
+        } else
+        {
+            //node is not leader.wait without timeout
+            acl_pthread_cond_wait(&cond_,&mutex_);
+        }
+
 		event = event_;
-		RESET_EVENT(event_);
+        event_ = 0;
 		acl_pthread_mutex_unlock(&mutex_);
 
 		return !IS_TO_STOP(event_);

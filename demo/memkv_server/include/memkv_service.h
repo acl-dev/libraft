@@ -1,4 +1,9 @@
 #pragma once
+
+struct memkv_load_snapshot_callback;
+struct memkv_make_snapshot_callback;
+struct memkv_apply_callback;
+
 class memkv_service : public acl::service_base
 {
 public:
@@ -43,10 +48,10 @@ private:
 
 	bool del(const del_req &req, del_resp &resp);
 
-	//raft callback handles
-	struct memkv_load_snapshot_callback *load_snapshot_callback_;
-	struct memkv_make_snapshot_callback *make_snapshot_callback_;
-	struct memkv_apply_callback *apply_callback_;
+    //raft callback handles
+    memkv_load_snapshot_callback *load_snapshot_callback_;
+    memkv_make_snapshot_callback *make_snapshot_callback_;
+    memkv_apply_callback         *apply_callback_;
 
 	//raft node
 	raft::node *node_;
@@ -54,10 +59,10 @@ private:
 	// config 
 	raft_config cfg_;
 
-	//kv store
-	memkv_store_t store_;
-	raft::version curr_ver_;
-	acl::locker mem_store_locker_;
+    //kv store
+	memkv_store_t   store_;
+    raft::version   curr_ver_;
+    acl::locker     mem_store_locker_;
 
 	//config file_path
 	std::string cfg_file_path_;

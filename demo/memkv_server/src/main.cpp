@@ -1,8 +1,12 @@
 #include "raft.hpp"
+#include "addr_info.h"
 #include "memkv_proto.h"
+#include "cluster_config.h"
 #include "raft_config.h"
 #include "memkv_service.h"
 #include "memkv.h"
+
+
 
 
 int main(int argc, char *argv[])
@@ -11,7 +15,13 @@ int main(int argc, char *argv[])
 
 	acl::acl_cpp_init();
 
-	acl::log::stdout_open(true);
+    const char* logfile = "test.log";
+    const char* pro_name = "memkv";
+    const char* cfg = "1:100; 2:100; 3:100";
+
+    // 在程序初始化时打开日志
+    logger_open(logfile, pro_name, cfg);
+    acl::log::stdout_open(true);
 
 	//default addr
 	const char* addr = "127.0.0.1:11081";
