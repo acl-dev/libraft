@@ -9,7 +9,7 @@ cd ../
 rm -rf ./build
 mkdir build
 cd build
-ACL_DEV=/home/akzi/code/acl-dev
+ACL_DEV=F:/fork/akzi/acl-dev/
 
 cmake .. -DACL_ROOT=${ACL_DEV}/acl \
 -DHTTP_RPC_INCLUDE_PATH=${ACL_DEV}/microservice/http_rpc/include \

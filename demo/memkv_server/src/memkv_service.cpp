@@ -370,10 +370,10 @@ bool memkv_service::make_snapshot(const std::string &path,
 	snapshot_path += path.c_str();
 	/**
 		file extension must not ".snapshot".
-		when making snapshot,it maybe happend
+		when making snapshot,it maybe 
 		happen something error.
 		eg: power off, disk error, and so on.
-		".snapshot" is good snapshot file extension.
+		".snapshot" mean good snapshot file.
 	*/
 	snapshot_path.format_append("%llu.%llu.temp_snapshot", 
 				curr_ver_.index_, 
