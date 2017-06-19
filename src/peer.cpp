@@ -4,7 +4,6 @@
 #define TO_ELECTION   0x02
 #define TO_STOP       0x04
 
-#define RESET_EVENT(e)		  (e = 0)
 #define SET_TO_REPLICATE(e)   (e |= TO_REPLICATE)
 #define SET_TO_ELECTION(e)    (e |= TO_ELECTION)
 #define SET_TO_STOP(e)        (e |= TO_STOP)
@@ -22,8 +21,8 @@ namespace raft
 	peer::peer(node &_node, const std::string &peer_id)
 		:node_(_node),
          peer_id_(peer_id),
-         match_index_(node_.last_log_index()),
-         next_index_(match_index_ + 1),
+         match_index_(0),
+         next_index_(0),
          event_(0),
          heart_inter_(3*1000),
          rpc_client_(acl::http_rpc_client::get_instance()),
@@ -46,15 +45,17 @@ namespace raft
 
         //init last_replicate_time_
         gettimeofday(&last_replicate_time_, NULL);
-
-		start();
-	}
+    }
 	peer::~peer()
 	{
 		//notify thread to stop
 		notify_stop();
 		wait();
 	}
+    void peer::start()
+    {
+        acl::thread::start();
+    }
 	void peer::notify_replicate()
 	{
 		acl_pthread_mutex_lock(&mutex_);
@@ -120,18 +121,18 @@ namespace raft
 
 		typedef acl::http_rpc_client::status_t status_t;
 
-		std::string file_path;
+		std::string file_path = node_.get_snapshot();
 		acl::ifstream file;
 		version ver;
 
-		if (!node_.get_snapshot(file_path))
+		if (file_path.empty())
 		{
 			logger_error("get snapshot failed");
 			return false;
 		}
 		if (!file.open_read(file_path.c_str()))
 		{
-			logger_error("open snapshot failed");
+			logger_error("open file snapshot failed");
 			return false;
 		}
 		if (!read(file, ver))
@@ -212,7 +213,9 @@ namespace raft
 			replicate_log_entries_response resp;
 			acl::http_rpc_client::status_t status;
 
-            logger_debug(PEER_SECTION, 10, "next_index_(%llu)", next_index_);
+            logger_debug(PEER_SECTION, 10,
+                         "next_index_(%llu)",
+                         next_index_);
 			if (!node_.build_replicate_log_request(
 				req, 
 				next_index_, 
@@ -230,8 +233,13 @@ namespace raft
 				}
 				continue;
 			}
-            logger_debug(PEER_SECTION,2,
-                         "===============pb_call=============");
+            logger_debug(PEER_SECTION, 2,
+                         "term(%lu) "
+                         "prev_log_term(%lu) "
+                         "prev_log_index(%lu)",
+                         req.term(),
+                         req.prev_log_term(),
+                         req.prev_log_index());
 
             req.set_req_id(++req_id_);
 
@@ -251,7 +259,7 @@ namespace raft
 				break;
 			}
 
-            logger_debug(PEER_SECTION,10,"pb_call done");
+            logger_debug(PEER_SECTION,10,"replicate done");
 
 			if (!resp.success())
 			{
@@ -282,7 +290,11 @@ namespace raft
 			//nothings to replicate
 			if(next_index_ > node_.last_log_index())
             {
-                logger_debug(PEER_SECTION, 10, "nothing to replicate.break");
+                logger_debug(PEER_SECTION, 10,
+                             "next_index_(%llu) "
+                                     "last_log_index(%llu).break",
+                             next_index_,
+                             node_.last_log_index());
                 break;
             }
 
@@ -308,7 +320,14 @@ namespace raft
         std::string data = req.SerializeAsString();
         acl_assert(data.size());
 
-        logger_debug(PEER_SECTION,10,"---------pb_call----------");
+        logger_debug(PEER_SECTION,10,
+                     "req.last_log_index(%lu) "
+                     "req.last_log_term(%lu) "
+                     "req.term(%lu)",
+                     req.last_log_index(),
+                     req.last_log_term(),
+                     req.term());
+
 		status_t status = rpc_client_.pb_call(
 			election_service_path_, 
 			req, 
@@ -320,7 +339,7 @@ namespace raft
 				status.error_str_.c_str());
 			return;
 		}
-		logger("election proto_call ok.");
+
 		node_.vote_response_callback(peer_id_, resp);
 	}
 

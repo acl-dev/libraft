@@ -36,38 +36,51 @@ metafile format:
 namespace raft
 {
 
-	metadata::metadata()
+	metadata::metadata(size_t max_file_size)
 	{
-		current_term_ = 0;
+		current_term_    = 0;
 		committed_index_ = 0;
-		applied_index_ = 0;
+		applied_index_   = 0;
+        vote_term_       = 0;
 
-		max_buffer_size_ = 10*1024*1024;
-		write_pos_ = 0;
-		buf_ = 0;
+		max_buffer_size_ = max_file_size;
+		write_pos_  = 0;
+		buf_        = 0;
 		file_index_ = 0;
 	}
-
+    metadata::~metadata ()
+    {
+        if(buf_)
+        {
+            close_mmap(buf_, max_buffer_size_);
+        }
+    }
 	bool metadata::reload(const std::string &path)
 	{
+        path_ = path;
 
-		std::set<std::string> files = 
-			list_dir(path, __METADATA_EXT__);
+        //list metadata files.
+		std::set<std::string> files
+                = list_dir(path, __METADATA_EXT__);
 
 		if (files.empty())
 		{
 			acl::string file;
 			file_index_++;
-			file.format("%s%llu%s",
+			file.format("%s%lu%s",
 				path.c_str(), 
 				file_index_, 
 				__METADATA_EXT__);
 
 			if (open(file.c_str(), true))
 			{
-				return check_point();
+				if(check_point())
+                {
+                    file_path_ = file;
+                    return true;
+                }
 			}
-			logger_error("create medata file error");
+			logger_error("create metadata file error");
 			return false;
 		}
 			
@@ -79,30 +92,46 @@ namespace raft
 			//the new one in the files last one.
 			if (!open(*it, false))
 			{
-				logger_error("open file error.");
+				logger_error("create_new_file file error.");
 				continue;
 			}
-			if (reload_file(*it))
+			if (reload())
 			{
-				logger("reload_file ok");
+                file_index_ = atoll(it->c_str());
+                logger("reload_file ok."
+                       "file_index(%lu) file_path(%s)",
+                       file_index_,
+                       it->c_str());
 				return true;
 			}
 		}
 		return  true;
 	}
-	bool metadata::reload_file(const std::string &file_path)
+	bool metadata::reload()
 	{
+        size_t count = 0;
+        acl_assert(write_pos_ );
+
 		do
 		{
 			//check if reach end of file.
 			if (write_pos_ - buf_ >= max_buffer_size_)
-				return true;
+            {
+                logger("read end of file.reload ok");
+                return true;
+            }
 
 			//if has not magic num. it has not data anymore.
 			if (get_uint32(write_pos_) != __MAGIC_START__)
-				break;
+            {
+                logger("reload ok. "
+                       "metadata entry count :%lu",
+                       count);
+                break;
+            }
+            count ++;
 
-			char ch = get_uint8(write_pos_);
+            char ch = get_uint8(write_pos_);
 			switch (ch)
 			{
 			case COMMITTED_INDEX:
@@ -134,6 +163,20 @@ namespace raft
 			}
 		} while (true);
 	}
+    void metadata::print_status()
+    {
+        logger("\n"
+               "---> current_term_(%llu) \n"
+               "---> applied_index_(%llu) \n"
+               "---> committed_index_(%llu) \n"
+               "---> vote_for_(%s) \n"
+               "---> vote_term_(%llu) \n",
+               current_term_,
+               applied_index_,
+               committed_index_,
+               vote_for_.c_str(),
+               vote_term_);
+    }
 	bool metadata::load_committed_index()
 	{
 		committed_index_ = get_uint64(write_pos_);
@@ -154,9 +197,10 @@ namespace raft
 		}
 		return true;
 	}
+
 	bool metadata::load_current_term()
 	{
-		applied_index_ = get_uint64(write_pos_);
+		current_term_ = get_uint64(write_pos_);
 		if (get_uint32(write_pos_) != __MAGIC_END__)
 		{
 			logger_error("metadata broken!!!");
@@ -175,17 +219,81 @@ namespace raft
 		}
 		return true;
 	}
+    bool metadata::create_new_file ()
+    {
+        acl::string file_path;
+
+        file_index_ ++;
+        file_path.format("%s%lu%s",
+                         path_.c_str(),
+                         file_index_,
+                         __METADATA_EXT__);
+
+        //close the old file mmap
+        close_mmap(buf_, max_buffer_size_);
+        buf_ = write_pos_ = NULL;
+
+        if(!open(file_path.c_str(), true))
+        {
+            logger_error("create file error. "
+                         "file_path:%s."
+                         " error:%s",
+                         file_path.c_str(),
+                         acl::last_serror());
+            return false;
+        }
+        //write current status to new file;
+        if(!check_point())
+        {
+            logger_fatal("check_point failed");
+            return false;
+        }
+
+        //delete old file from disk
+        if(remove(file_path_.c_str()) != 0)
+        {
+            logger_error("remove old metadata file error.%s",
+                         acl::last_serror());
+        }
+        file_path_ = file_path;
+
+        return true;
+    }
 	bool metadata::check_remain_buffer(size_t size)
 	{
-		//sizeof remail for read __MAGIC_START__
-		return write_pos_ - buf_ > size + sizeof(uint32_t);
+        if(write_pos_ == NULL)
+        {
+            logger_error("metadata not create_new_file");
+            return false;
+        }
+
+        //end of file
+        if((write_pos_ - buf_) == max_buffer_size_ )
+            return false;
+
+         acl_assert((write_pos_ - buf_) < max_buffer_size_);
+
+        size_t remain = max_buffer_size_ -(write_pos_ - buf_);
+
+        /**
+         * 4 bytes(sizeof(int)) length buffer for reading
+         * next __MAGIC_START__.entry in file begin with
+         * __MAGIC_START__
+         * when metadata reload file and the data full
+         * of the file. read next __MAGIC_START__ will
+         * over fo mmap.it will crash
+         */
+        if(remain > size + sizeof(int))
+            return true;
+
+        return create_new_file();
 	}
 	bool metadata::set_committed_index(log_index_t index)
 	{
 		acl::lock_guard lg(locker_);
 		if (!check_remain_buffer(COMMITTED_INDEX_LEN))
 		{
-			logger("metadata end of file");
+			logger_error("write metadata error");
 			return false;
 		}
 			
@@ -208,7 +316,7 @@ namespace raft
 		acl::lock_guard lg(locker_);
 		if (!check_remain_buffer(APPLIED_INDEX_LEN))
 		{
-			logger("metadata end of file");
+            logger_error("write metadata error");
 			return false;
 		}
 
@@ -229,14 +337,14 @@ namespace raft
 	bool metadata::set_current_term(term_t term)
 	{
 		acl::lock_guard lg(locker_);
-		if (!check_remain_buffer(APPLIED_INDEX_LEN))
+		if (!check_remain_buffer(CURRENT_TERM_LEN))
 		{
-			logger("metadata end of file");
+            logger_error("write metadata error");
 			return false;
 		}
 
 		put_uint32(write_pos_, __MAGIC_START__);
-		put_uint8(write_pos_, APPLIED_INDEX);
+		put_uint8(write_pos_, CURRENT_TERM);
 		put_uint64(write_pos_, term);
 		put_uint32(write_pos_, __MAGIC_END__);
 		current_term_ = term;
@@ -249,23 +357,23 @@ namespace raft
 		return current_term_;
 	}
 
-	bool metadata::set_vote_for(const std::string &candidate_id, term_t term)
+	bool metadata::set_vote_for(const std::string &id, term_t term)
 	{
 		acl::lock_guard lg(locker_);
 
-		size_t len = APPLIED_INDEX_LEN + sizeof(int) + candidate_id.size();
+		size_t len = APPLIED_INDEX_LEN + sizeof(int) + id.size();
 		if (!check_remain_buffer(len))
 		{
-			logger("metadata end of file");
+            logger_error("write metadata error");
 			return false;
 		}
 
 		put_uint32(write_pos_, __MAGIC_START__);
-		put_uint8(write_pos_, APPLIED_INDEX);
+		put_uint8(write_pos_, VOTE_FOR);
 		put_uint64(write_pos_, term);
-		put_string(write_pos_, candidate_id);
+		put_string(write_pos_, id);
 		put_uint32(write_pos_, __MAGIC_END__);
-		vote_for_ = candidate_id;
+		vote_for_ = id;
 		vote_term_ = term;
 	}
 
@@ -281,14 +389,17 @@ namespace raft
 		//file not exist
 		if (size == -1 )
 		{
-			logger("open file(%s) error:%s", 
-				file_path.c_str(),
-				acl::last_serror());
+			logger_debug(METADATA_SECTION, 10,
+                         "open file(%s) "
+                         "failed:%s",
+                         file_path.c_str(),
+                         acl::last_serror());
 
 			if (!create)
 				return false;
+
 			//default max size of metadata file
-			size = max_buffer_size_;
+			size = (long long int) max_buffer_size_;
 		}
 
 		ACL_FILE_HANDLE fd = acl_file_open( 
@@ -296,11 +407,13 @@ namespace raft
 
 		if (fd == ACL_FILE_INVALID)
 		{
-			logger_error("open file error.%s", acl::last_serror());
+            logger("create new file(%s) failed:%s",
+                   file_path.c_str(),
+                   acl::last_serror());
 			return false;
 		}
 
-		//open mmap
+		//create_new_file mmap
 		write_pos_ = buf_ = 
 			static_cast<unsigned char *>(open_mmap(fd, size));
 		

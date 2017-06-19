@@ -73,6 +73,11 @@ namespace raft
 		 */
 		virtual log_index_t last_index() = 0;
 
+        /**
+         * get last log entry term
+         * @return return 0,if empty otherwise return  > 0
+         */
+        virtual log_index_t last_term() = 0;
 		/**
 		 * \brief get start index of this log file
 		 * \return return > 0 if 

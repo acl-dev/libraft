@@ -186,6 +186,7 @@ void memkv_service::init()
 	init_raft_node();
 	regist_service();
 
+    reload();
     //start node
     node_->start();
 }
@@ -194,7 +195,7 @@ void memkv_service::load_config()
 	acl::ifstream file;
 	if (!file.open_read(cfg_file_path_.c_str()))
 	{
-		logger_fatal("open config file error."
+		logger_fatal("create_new_file config file error."
 			"cfg_file_path_:%s "
 			"error:%s",
 			cfg_file_path_.c_str(),
@@ -307,8 +308,37 @@ void memkv_service::regist_service()
 	server_.on_pb(service_path, node_,
                   &raft::node::handle_install_snapshot_request);
 
+}
+void memkv_service::reload()
+{
+    std::string file_path = node_->get_snapshot();
+    if(file_path.size())
+    {
+        if(!load_snapshot(file_path))
+            logger_fatal("load_snapshot error");
+    }
+    raft::log_index_t applied_index = node_->applied_index();
+    acl_assert(curr_ver_.index_ <= applied_index);
+    do
+    {
+        if(curr_ver_.index_ == applied_index)
+        {
+            logger("------reload ok! --------");
+            logger("---kv_store size(%lu)----",store_.size());
+            break;
+        }
 
 
+        std::string data;
+        if(!node_->read(curr_ver_.index_+1, data, curr_ver_))
+        {
+            logger_fatal("read log failed!!!!!!!!!");
+            return;
+        }
+
+        apply(data, curr_ver_);
+
+    }while(true);
 }
 //raft from raft framework
 bool memkv_service::load_snapshot(const std::string &file_path)
@@ -316,7 +346,7 @@ bool memkv_service::load_snapshot(const std::string &file_path)
 	acl::ifstream file;
 	if (!file.open_read(file_path.c_str()))
 	{
-		logger_error("open file error");
+		logger_error("create_new_file file error");
 		return false;
 	}
 	raft::version ver;
@@ -362,7 +392,7 @@ bool memkv_service::load_snapshot(const std::string &file_path)
 	return true;
 }
 bool memkv_service::make_snapshot(const std::string &path,
-	std::string &filepath)
+	std::string &file_path)
 {
 	acl::lock_guard lg(mem_store_locker_);
 	
@@ -375,14 +405,16 @@ bool memkv_service::make_snapshot(const std::string &path,
 		eg: power off, disk error, and so on.
 		".snapshot" mean good snapshot file.
 	*/
-	snapshot_path.format_append("%llu.%llu.temp_snapshot", 
+	snapshot_path.format_append("%llu.%llu.temp_snapshot",
 				curr_ver_.index_, 
 				curr_ver_.term_);
 
 	acl::ofstream file;
 	if (!file.open_trunc(snapshot_path.c_str()))
 	{
-		logger_error("open file error.%s", snapshot_path.c_str());
+		logger_error("create_new_file file error.%s",
+                     snapshot_path.c_str());
+
 		return false;
 	}
 
@@ -393,6 +425,7 @@ bool memkv_service::make_snapshot(const std::string &path,
 	{
 		goto failed;
 	}
+
 	for (memkv_store_t::const_iterator it = store_.begin();
 		it != store_.end(); it++)
 	{
@@ -403,11 +436,12 @@ bool memkv_service::make_snapshot(const std::string &path,
 			goto failed;
 		}
 	}
+
 	file.close();
-	filepath = snapshot_path;
+	file_path = snapshot_path;
 	return true;
 failed:
-	logger_error("write file error");
+	logger_error("write snapshot file error!!!!!!!!!!!!!");
 	file.close();
 	remove(snapshot_path.c_str());
 	return false;
@@ -435,6 +469,7 @@ bool memkv_service::apply(const std::string& data,
 			return false;
 		}
 		store_[req.key] = req.value;
+        curr_ver_ = ver;
 		return true;
 	}
 	else if (flag == DEL_REQ)
@@ -447,6 +482,7 @@ bool memkv_service::apply(const std::string& data,
 			return false;
 		}
 		store_.erase(req.key);
+        curr_ver_ = ver;
 		return true;
 	}
 	logger_error("error req cmd");
@@ -459,8 +495,8 @@ bool memkv_service::check_leader()const
 {
 	return node_->is_leader();
 }
-//memkv serivces
 
+//memkv services
 bool memkv_service::get(const get_req &req, get_resp &resp)
 {
 	if (!check_leader())

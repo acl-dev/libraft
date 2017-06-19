@@ -4,8 +4,24 @@ namespace raft
 	class metadata
 	{
 	public:
-		metadata();
+        /**
+         * metadata construct.
+         * @param max_file_size when file full.
+         * it will create new one
+         * if max_file_size too small. it create so many file
+         * (it will auto delete old file).if max_file_size too big
+         * it will take too long time to reload metadata.
+         */
+		metadata(size_t max_file_size = 10*1024*1024);
 
+        ~metadata ();
+
+        /**
+         * reload metadata
+         * @param path the path to reload metadata
+         * @return return true if reload ok.
+         * return false some error  happen
+         */
 		bool reload(const std::string &path);
 
 		bool set_committed_index(log_index_t index);
@@ -20,11 +36,14 @@ namespace raft
 
 		term_t get_current_term();
 
-		bool set_vote_for(const std::string &candidate_id, term_t term);
+		bool set_vote_for(const std::string &id, term_t term);
 
 		std::pair<term_t,std::string> get_vote_for();
 
+        void print_status();
 	private:
+        bool create_new_file ();
+
 		bool check_remain_buffer(size_t size);
 
 		bool load_committed_index();
@@ -35,16 +54,14 @@ namespace raft
 		
 		bool load_current_term();
 
-		void reset();
+		bool reload();
 
-		bool reload_file(const std::string &file_path);
-
-		bool open(const std::string &file_path, bool create = false);
+		bool open(const std::string &file_path, bool create);
 
 		bool check_point();
 
 	private:
-		unsigned long long file_index_;
+		size_t file_index_;
 
 		term_t current_term_;
 		log_index_t committed_index_;
@@ -54,6 +71,7 @@ namespace raft
 
 		acl::locker locker_;
 		std::string path_;
+        std::string file_path_;
 
 		size_t max_buffer_size_;
 		unsigned char *write_pos_;

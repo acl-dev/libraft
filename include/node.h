@@ -133,7 +133,18 @@ namespace raft
 		 * \param data buffer to store the data.
 		 * \return return true if read ok.otherwise will return false;
 		 */
-		bool read(log_index_t index, std::string &data);
+		bool read(log_index_t index, std::string &data, version &ver);
+
+
+        /**
+         * get snapshot file from raft
+         * @return snapshot file path
+         * if return file path not empty.mean has snapshot.
+         * otherwise has not snapshot
+         */
+        std::string get_snapshot() const;
+
+
 		/**
 		* \brief return applied log index.
 		* when state machine log data.
@@ -262,9 +273,11 @@ namespace raft
 				replicate_log_entries_response &resp);
 
 		/**
-		* \brief this interface should regist to server to process install_snapshot_request 
-		* when the follower miss logs and leader has not log to replicate to this node,
-		* leader will send snapshot file to follower instead.
+		* \brief this interface should regist to server to process
+		 * install_snapshot_request
+		* when the follower miss logs and leader has not log to
+		 * replicate to this node leader will send snapshot file to
+		 * follower instead.
 		* \param req install_snapshot_request send from leader.
 		* \param resp install_snapshot_response to send back to leader
 		* \return return true
@@ -295,8 +308,8 @@ namespace raft
 
 		//for peer
 		/**
-		 * \brief check is candicate
-		 * \return true if candicate,otherwise return false;
+		 * \brief check is candidate
+		 * \return true if candidate,otherwise return false;
 		 */
 		bool is_candidate();
 
@@ -352,8 +365,6 @@ namespace raft
 
 		void handle_new_term(term_t term);
 
-		bool get_snapshot(std::string &path) const;
-		
 		/**
    		 * 
 		 * \brief scan snapshot path,and find snapshot files
@@ -363,7 +374,8 @@ namespace raft
 
 		/**
 		 * \brief check should do log compaction now.
-		 * \return return true should to do log compaction,otherwise return false
+		 * \return return true should to do log compaction,
+		 * otherwise return false
 		 */
 		bool should_compact_log();
 		
@@ -387,13 +399,14 @@ namespace raft
 
 		log_index_t start_log_index()const;
 
-		//about peers function
+		//notify peers function
 		void notify_peers_replicate_log();
 
 		void notify_peers_to_election();
 
 		void update_peers_next_index(log_index_t index);
 		//end
+
 		void step_down();
 
 		void load_snapshot_file();
@@ -426,12 +439,12 @@ namespace raft
 		public:
 			explicit apply_log(node &);
 			~apply_log();
-			void do_apply();
+			void to_apply ();
 			virtual void *run();
 		private:
 			bool wait_to_apply();
 			node &node_;
-			bool do_apply_;
+			bool to_apply_;
 			bool to_stop_;
 			acl_pthread_mutex_t mutex_;
 			acl_pthread_cond_t cond_;
@@ -479,10 +492,9 @@ namespace raft
 		log_manager *log_manager_;
 
 		unsigned int election_timeout_;
-		log_index_t committed_index_;
-		log_index_t applied_index_;
-		term_t		current_term_;
+
 		int		role_;
+
 		std::string raft_id_;
 		std::string leader_id_;
 		std::string vote_for_;
@@ -523,5 +535,6 @@ namespace raft
 		log_compaction     log_compaction_worker_;
 		apply_callback     *apply_callback_;
 		apply_log          apply_log_;
+        metadata           metadata_;
 	};
 }

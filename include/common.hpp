@@ -286,7 +286,8 @@ namespace raft
 	 * list dir files.
 	 */
 	inline std::set<std::string> 
-		list_dir(const std::string &path, const std::string &ext_)
+		list_dir(const std::string &path,
+                 const std::string &ext_)
 	{
 		std::set<std::string> files;
 		const char* file_path = NULL;
@@ -294,15 +295,17 @@ namespace raft
 		acl::scan_dir scan;
 		if (!scan.open(path.c_str(), false))
 		{
-			logger_error("scan open error %s",acl::last_serror());
+			logger_error("scan open error %s",
+                         acl::last_serror());
 			return files;
 		}
-		while ((file_path = scan.next_file(true)) != NULL)
+		while ((file_path = scan.next_file(true)))
 		{
 			if (ext_.size())
 			{
-				if (acl_strrncasecmp(file_path, ext_.c_str(),
-					ext_.size()) == 0)
+				if (acl_strrncasecmp(file_path,
+                                     ext_.c_str(),
+                                     ext_.size()) == 0)
 				{
 					files.insert(file_path);
 				}
@@ -315,4 +318,22 @@ namespace raft
 		}
 		return files;
 	}
+
+    /**
+     * if path is not end with slash('/') or backslash('\\').
+     * make it end with slash('/')
+     * @param path
+     */
+    inline void append_slash(std::string &path)
+    {
+        if (path.size())
+        {
+            //back
+            char ch = path[path.size() - 1];
+            if (ch != '/'  && ch != '\\')
+            {
+                path.push_back('/');
+            }
+        }
+    }
 }

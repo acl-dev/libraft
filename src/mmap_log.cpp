@@ -23,6 +23,8 @@ namespace raft
 
         last_index_ = last_index;
         start_index_ = 0;
+        last_term_ = 0;
+        start_term_ = 0;
         eof_ = false;
         is_open_ = false;
     }
@@ -46,16 +48,16 @@ namespace raft
 		}
             
 		
-		//open file
+		//create_new_file file
         ACL_FILE_HANDLE fd = acl_file_open(
                 filepath.c_str(),
                 O_RDWR | O_CREAT,
                 0600);
 
-		//open file error
+		//create_new_file file error
         if (fd == ACL_FILE_INVALID)
         {
-            logger_error("open %s error %s\r\n",
+            logger_error("create_new_file %s error %s\r\n",
                          filepath.c_str(),
                          acl_last_serror());
             return false;
@@ -82,7 +84,7 @@ namespace raft
 		//and it name:log file name + ".index"
         index_filepath_ = filepath + __INDEX__EXT__;
 
-		//open index file
+		//create_new_file index file
         file_size = acl_file_size(index_filepath_.c_str());
 		
 		//file exist
@@ -91,14 +93,14 @@ namespace raft
 			index_buf_size_ = (size_t)file_size;
 		}
             
-		//open index file
+		//create_new_file index file
         fd = acl_file_open(index_filepath_.c_str(),
                            O_RDWR | O_CREAT,
                            0600);
-		//open file error
+		//create_new_file file error
         if (fd == ACL_FILE_INVALID)
         {
-            logger_error("open %s error %s\r\n",
+            logger_error("create_new_file %s error %s\r\n",
                          index_filepath_.c_str(), acl_last_serror());
 
             close_mmap(data_buf_, data_buf_size_);
@@ -172,18 +174,34 @@ namespace raft
         acl::lock_guard lg(write_locker_);
 		
 		//write buffer offset
-        size_t offset = (data_wbuf_ - data_buf_);
+        unsigned long offset = data_wbuf_ - data_buf_;
 		//write remain
-        size_t remail_len = data_buf_size_ - offset;
+        acl_assert(offset < data_buf_size_ );
+        size_t remain_len = data_buf_size_ - offset;
 
 		//entry size
-		size_t entry_len = entry.ByteSizeLong();
+		size_t len = entry.ByteSizeLong();
+
+        //for store the entry size
+        len += sizeof(int);
+
+        //for __MAGIC_START__
+        len +=  sizeof(int);
+
+        //__MAGIC_END__
+        len += sizeof(int);
+
+        //remain for reload check __MAGIC_START__
+        //if write to end of file
+        //reload file will read over of this file.
+        //it will crash!!!!
+        len += sizeof(int);
 
 		//next index
         log_index_t index = last_index_ + 1;
 
         //check remain buffer ok
-        if (remail_len < entry_len + sizeof(unsigned int) * 2)
+        if (remain_len < len)
         {
             logger("mmap_log eof");
             eof_ = true;
@@ -207,8 +225,12 @@ namespace raft
 
         //write ok. update last_index_
         last_index_ = index;
+        last_term_ = entry.term();
+
         if (start_index_ == 0)
             start_index_ = last_index_;
+        if(start_term_ == 0)
+            start_term_ = last_term_;
 
         logger_debug(1, 10,
                      "index(%lu) "
@@ -224,7 +246,7 @@ namespace raft
 
         if (!is_open_)
         {
-            logger("mmap log not open");
+            logger("mmap log not create_new_file");
             return false;
         }
 
@@ -290,7 +312,9 @@ namespace raft
         unsigned char *buffer = get_data_buffer(index);
         if (!buffer)
         {
-            logger("index(%llu) error", index);
+            logger("last_index(%llu) index(%llu) error",
+                   last_index(),
+                   index);
             return false;
         }
 
@@ -326,7 +350,7 @@ namespace raft
     {
         if (!is_open_)
         {
-            logger("mmap log not open");
+            logger("mmap log not create_new_file");
             return false;
         }
 
@@ -349,6 +373,10 @@ namespace raft
     raft::log_index_t mmap_log::last_index()
     {
         return last_index_;
+    }
+    raft::term_t mmap_log::last_term ()
+    {
+        return last_term_;
     }
     std::string mmap_log::file_path()
     {
@@ -416,8 +444,12 @@ namespace raft
         entry.set_term(term_t (-1));
         entry.set_type(e_raft_log);
         entry.set_log_data(std::string(" "));
-
-        size_t one_entry_len = get_sizeof(entry) + sizeof(int) * 2;
+        /**
+         * log_entry length : entry.ByteSize() + sizeof(int)
+         * 4 bytes (sizeof(int)) to store the size of entry.
+         */
+        size_t one_entry_len =
+                entry.ByteSize() + sizeof(int) + sizeof(int) * 2;
 
         size_t one_index_len = sizeof(long long) + sizeof(int) * 3;
 
@@ -518,6 +550,11 @@ namespace raft
         }
 
         bool rc = get_message(data_buffer, entry);
+        if(!rc)
+        {
+            logger_fatal("get massage error");
+            return false;
+        }
 
         if (get_uint32(data_buffer) != __MAGIC_END__)
         {
@@ -525,6 +562,7 @@ namespace raft
             return false;
         }
 
+        last_term_ = entry.term();
         data_wbuf_ = data_buffer;
         return true;
     }
@@ -555,7 +593,7 @@ namespace raft
         if (start_index_ == 0)
             reload_start_index();
 
-        if (index < start_index_)
+        if (index < start_index_ || index > last_index_)
             return NULL;
         else if (!start_index_ || index == start_index_)
             return index_buf_;
@@ -580,7 +618,7 @@ namespace raft
 
         if (!_log->open(filepath))
         {
-            logger_error("mmap_log open error,%s",
+            logger_error("mmap_log create_new_file error,%s",
                          filepath.c_str());
             _log->dec_ref();
             return NULL;

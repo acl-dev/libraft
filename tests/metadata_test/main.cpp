@@ -3,10 +3,11 @@ using namespace raft;
 
 #define METADATA_TEST_COUNT 100000
 
-raft::metadata metadata_;
+raft::metadata metadata_(64*1024);
 
 void do_write_test(size_t count)
 {
+    logger("begin write");
 	for (size_t i = 0; i < count; i++)
 	{
 		metadata_.set_applied_index(i);
@@ -23,6 +24,7 @@ void do_write_test(size_t count)
 }
 void do_read_test(size_t value)
 {
+    logger("do read");
 	acl_assert(metadata_.get_applied_index() == value);
 	acl_assert(metadata_.get_committed_index() == value);
 	acl_assert(metadata_.get_current_term() == value);
@@ -32,7 +34,9 @@ void do_read_test(size_t value)
 }
 int main()
 {
-	acl_assert(metadata_.reload("metadata_test/"));
+    acl::log::stdout_open(true);
+
+	acl_assert(metadata_.reload("metadata_test_dir/"));
 	if (metadata_.get_applied_index() == 0)
 	{
 		do_write_test(METADATA_TEST_COUNT);

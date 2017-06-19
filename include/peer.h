@@ -51,6 +51,7 @@ namespace raft
 		 */
 		void set_match_index(log_index_t index);
 
+        void start();
 	private:
 		void notify_stop();
 
