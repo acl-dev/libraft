@@ -50,8 +50,10 @@ int main(int argc, char *argv[])
     {
         std::string key = argv[2];
         std::string value  = argv[3];
-
-        std::cout << client.set(key,value) << std::endl;
+        for(int i = 0 ; i < atoi(argv[4]); i++)
+        {
+            std::cout << client.set(key,value) << std::endl;
+        }
 
     }else if(cmd == std::string("del"))
     {

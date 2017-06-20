@@ -391,6 +391,7 @@ bool memkv_service::load_snapshot(const std::string &file_path)
 	}
 	file.close();
 
+    curr_ver_ = ver;
 	logger("load_snapshot %s done.items:%u",
 		file_path.c_str(), items);
 
@@ -414,6 +415,7 @@ bool memkv_service::make_snapshot(const std::string &path,
 				curr_ver_.index_, 
 				curr_ver_.term_);
 
+    logger("snapshot file_path(%s)", snapshot_path.c_str());
 	acl::ofstream file;
 	if (!file.open_trunc(snapshot_path.c_str()))
 	{
@@ -426,8 +428,9 @@ bool memkv_service::make_snapshot(const std::string &path,
 
 	//write raft::version .and store item count
 	if (!raft::write(file, curr_ver_) ||
-		raft::write(file, (unsigned int)store_.size()))
+        !raft::write(file, (unsigned int)store_.size()))
 	{
+        logger_error("write snapshot head error");
 		goto failed;
 	}
 
@@ -438,6 +441,7 @@ bool memkv_service::make_snapshot(const std::string &path,
 		if (!raft::write(file, it->first) ||
 			!raft::write(file, it->second))
 		{
+            logger_error("write snapshot data error");
 			goto failed;
 		}
 	}
@@ -446,7 +450,7 @@ bool memkv_service::make_snapshot(const std::string &path,
 	file_path = snapshot_path;
 	return true;
 failed:
-	logger_error("write snapshot file error!!!!!!!!!!!!!");
+	logger_error("----------------write snapshot file error!!!!!!!!!!!!!");
 	file.close();
 	remove(snapshot_path.c_str());
 	return false;
