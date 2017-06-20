@@ -34,6 +34,11 @@ namespace raft
 
 		term_t last_term();
 
+		/**
+		 * return all logs info .
+		 * one log info is [start_log_index, last_log_index].
+		 * @return
+		 */
 		log_infos_t logs_info();
 
 		int discard_log(log_index_t log_start_index);

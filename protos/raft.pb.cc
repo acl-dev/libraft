@@ -253,7 +253,7 @@ void AddDescriptorsImpl() {
       "(\004\022\014\n\004term\030\002 \001(\004\022*\n\rsnapshot_info\030\003 \001(\0132"
       "\023.raft.snapshot_info\022\016\n\006offset\030\004 \001(\004\022\014\n\004"
       "done\030\005 \001(\010\022\021\n\tleader_id\030\006 \001(\t\022\014\n\004data\030\007 "
-      "\001(\t\"O\n\031install_snapshot_response\022\016\n\006req_"
+      "\001(\014\"O\n\031install_snapshot_response\022\016\n\006req_"
       "id\030\001 \001(\004\022\014\n\004term\030\002 \001(\004\022\024\n\014bytes_stored\030\003"
       " \001(\004*5\n\016log_entry_type\022\016\n\ne_raft_log\020\000\022\023"
       "\n\017e_configuration\020\001b\006proto3"
@@ -516,6 +516,7 @@ void vote_request::SerializeWithCachedSizes(
 
 ::google::protobuf::uint8* vote_request::InternalSerializeWithCachedSizesToArray(
     bool deterministic, ::google::protobuf::uint8* target) const {
+  (void)deterministic; // Unused
   // @@protoc_insertion_point(serialize_to_array_start:raft.vote_request)
   ::google::protobuf::uint32 cached_has_bits = 0;
   (void) cached_has_bits;
@@ -980,6 +981,7 @@ void vote_response::SerializeWithCachedSizes(
 
 ::google::protobuf::uint8* vote_response::InternalSerializeWithCachedSizesToArray(
     bool deterministic, ::google::protobuf::uint8* target) const {
+  (void)deterministic; // Unused
   // @@protoc_insertion_point(serialize_to_array_start:raft.vote_response)
   ::google::protobuf::uint32 cached_has_bits = 0;
   (void) cached_has_bits;
@@ -1380,6 +1382,7 @@ void log_entry::SerializeWithCachedSizes(
 
 ::google::protobuf::uint8* log_entry::InternalSerializeWithCachedSizesToArray(
     bool deterministic, ::google::protobuf::uint8* target) const {
+  (void)deterministic; // Unused
   // @@protoc_insertion_point(serialize_to_array_start:raft.log_entry)
   ::google::protobuf::uint32 cached_has_bits = 0;
   (void) cached_has_bits;
@@ -1889,6 +1892,7 @@ void replicate_log_entries_request::SerializeWithCachedSizes(
 
 ::google::protobuf::uint8* replicate_log_entries_request::InternalSerializeWithCachedSizesToArray(
     bool deterministic, ::google::protobuf::uint8* target) const {
+  (void)deterministic; // Unused
   // @@protoc_insertion_point(serialize_to_array_start:raft.replicate_log_entries_request)
   ::google::protobuf::uint32 cached_has_bits = 0;
   (void) cached_has_bits;
@@ -2433,6 +2437,7 @@ void replicate_log_entries_response::SerializeWithCachedSizes(
 
 ::google::protobuf::uint8* replicate_log_entries_response::InternalSerializeWithCachedSizesToArray(
     bool deterministic, ::google::protobuf::uint8* target) const {
+  (void)deterministic; // Unused
   // @@protoc_insertion_point(serialize_to_array_start:raft.replicate_log_entries_response)
   ::google::protobuf::uint32 cached_has_bits = 0;
   (void) cached_has_bits;
@@ -2779,6 +2784,7 @@ void snapshot_info::SerializeWithCachedSizes(
 
 ::google::protobuf::uint8* snapshot_info::InternalSerializeWithCachedSizesToArray(
     bool deterministic, ::google::protobuf::uint8* target) const {
+  (void)deterministic; // Unused
   // @@protoc_insertion_point(serialize_to_array_start:raft.snapshot_info)
   ::google::protobuf::uint32 cached_has_bits = 0;
   (void) cached_has_bits;
@@ -3108,16 +3114,12 @@ bool install_snapshot_request::MergePartialFromCodedStream(
         break;
       }
 
-      // string data = 7;
+      // bytes data = 7;
       case 7: {
         if (static_cast< ::google::protobuf::uint8>(tag) ==
             static_cast< ::google::protobuf::uint8>(58u)) {
-          DO_(::google::protobuf::internal::WireFormatLite::ReadString(
+          DO_(::google::protobuf::internal::WireFormatLite::ReadBytes(
                 input, this->mutable_data()));
-          DO_(::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
-            this->data().data(), this->data().length(),
-            ::google::protobuf::internal::WireFormatLite::PARSE,
-            "raft.install_snapshot_request.data"));
         } else {
           goto handle_unusual;
         }
@@ -3187,13 +3189,9 @@ void install_snapshot_request::SerializeWithCachedSizes(
       6, this->leader_id(), output);
   }
 
-  // string data = 7;
+  // bytes data = 7;
   if (this->data().size() > 0) {
-    ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
-      this->data().data(), this->data().length(),
-      ::google::protobuf::internal::WireFormatLite::SERIALIZE,
-      "raft.install_snapshot_request.data");
-    ::google::protobuf::internal::WireFormatLite::WriteStringMaybeAliased(
+    ::google::protobuf::internal::WireFormatLite::WriteBytesMaybeAliased(
       7, this->data(), output);
   }
 
@@ -3202,6 +3200,7 @@ void install_snapshot_request::SerializeWithCachedSizes(
 
 ::google::protobuf::uint8* install_snapshot_request::InternalSerializeWithCachedSizesToArray(
     bool deterministic, ::google::protobuf::uint8* target) const {
+  (void)deterministic; // Unused
   // @@protoc_insertion_point(serialize_to_array_start:raft.install_snapshot_request)
   ::google::protobuf::uint32 cached_has_bits = 0;
   (void) cached_has_bits;
@@ -3244,14 +3243,10 @@ void install_snapshot_request::SerializeWithCachedSizes(
         6, this->leader_id(), target);
   }
 
-  // string data = 7;
+  // bytes data = 7;
   if (this->data().size() > 0) {
-    ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
-      this->data().data(), this->data().length(),
-      ::google::protobuf::internal::WireFormatLite::SERIALIZE,
-      "raft.install_snapshot_request.data");
     target =
-      ::google::protobuf::internal::WireFormatLite::WriteStringToArray(
+      ::google::protobuf::internal::WireFormatLite::WriteBytesToArray(
         7, this->data(), target);
   }
 
@@ -3270,10 +3265,10 @@ size_t install_snapshot_request::ByteSizeLong() const {
         this->leader_id());
   }
 
-  // string data = 7;
+  // bytes data = 7;
   if (this->data().size() > 0) {
     total_size += 1 +
-      ::google::protobuf::internal::WireFormatLite::StringSize(
+      ::google::protobuf::internal::WireFormatLite::BytesSize(
         this->data());
   }
 
@@ -3553,7 +3548,7 @@ void install_snapshot_request::set_allocated_leader_id(::std::string* leader_id)
   // @@protoc_insertion_point(field_set_allocated:raft.install_snapshot_request.leader_id)
 }
 
-// string data = 7;
+// bytes data = 7;
 void install_snapshot_request::clear_data() {
   data_.ClearToEmptyNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
 }
@@ -3580,7 +3575,7 @@ void install_snapshot_request::set_data(const char* value) {
   data_.SetNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), ::std::string(value));
   // @@protoc_insertion_point(field_set_char:raft.install_snapshot_request.data)
 }
-void install_snapshot_request::set_data(const char* value, size_t size) {
+void install_snapshot_request::set_data(const void* value, size_t size) {
   
   data_.SetNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(),
       ::std::string(reinterpret_cast<const char*>(value), size));
@@ -3777,6 +3772,7 @@ void install_snapshot_response::SerializeWithCachedSizes(
 
 ::google::protobuf::uint8* install_snapshot_response::InternalSerializeWithCachedSizesToArray(
     bool deterministic, ::google::protobuf::uint8* target) const {
+  (void)deterministic; // Unused
   // @@protoc_insertion_point(serialize_to_array_start:raft.install_snapshot_response)
   ::google::protobuf::uint32 cached_has_bits = 0;
   (void) cached_has_bits;

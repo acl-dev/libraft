@@ -79,7 +79,8 @@ namespace raft {
 			  last_snapshot_term_(0),
 			  max_log_size_(1024 * 1024 * 1024),//1G
 			  max_log_count_(5),
-			  compacting_log_(false),
+              mini_log_count_(max_log_count_/2),
+              max_snapshot_size_(2),
 			  election_timer_(*this),
 			  log_compaction_worker_(*this),
 			  apply_callback_(NULL),
@@ -185,8 +186,11 @@ namespace raft {
 			log_manager_->set_log_size(max_log_size_);
 	}
 
-	void node::set_max_log_count(size_t size) {
+	void node::set_max_log_count(size_t size)
+    {
 		max_log_count_ = size;
+        mini_log_count_ = max_log_count_/2;
+        acl_assert(mini_log_count_ );
 	}
 
 	void node::load_last_snapshot_info() {
@@ -469,18 +473,23 @@ namespace raft {
 		log_index_t majority_index
 			= match_indexs[match_indexs.size() / 2];
 
-		if (majority_index > committed_index())
+		if (committed_index() < majority_index)
 		{
 			set_committed_index(majority_index);
-            apply_log_.to_apply();
 		}
+        if(applied_index() < committed_index())
+        {
+            apply_log_.to_apply();
+        }
         logger_debug(NODE_SECTION, 10,
                      "majority_index(%llu) "
                      "committed_index(%llu) "
-                     "applied_index(%llu) ",
+                     "applied_index(%llu) "
+                     "last_index(%llu) ",
                      majority_index,
                      committed_index(),
-                     applied_index());
+                     applied_index(),
+                     last_log_index());
 	}
 
 	void node::build_vote_request(vote_request &req)
@@ -658,52 +667,50 @@ namespace raft {
 
 	bool node::should_compact_log()
 	{
-        if (log_manager_->log_count() <= max_log_count_)
+        if (log_manager_->log_count() > max_log_count_)
         {
-            logger_debug(NODE_SECTION, 10, 
-                    "log count(%lu) max_log_size_(%lu)",
-                    log_manager_->log_count(),
-                   max_log_size_ );
+            logger_debug(NODE_SECTION, 10,
+                         "log count(%lu) "
+                         "max_log_size_(%lu)",
+                         log_manager_->log_count(),
+                         max_log_count_ );
 
-            return false;
+            return true;
         }
-        else
-        {
-            logger_debug(NODE_SECTION, 10, 
-                    "--------log count > max_log_size_----------");
+        return false;
+	}
 
-            if (check_compacting_log())
+	void node::async_compaction_log()
+	{
+        log_compaction_worker_.do_compact_log();
+	}
+
+    void node::remove_old_snapshot() const
+    {
+        std::map<log_index_t, std::string>
+                snapshot_files_ = scan_snapshots();
+
+        while(snapshot_files_.size() > max_snapshot_size_)
+        {
+            const char *file_path =
+                    snapshot_files_.begin()->second.c_str();
+
+            if(remove(file_path) != 0)
             {
-                logger_debug(NODE_SECTION, 10, 
-                        " -------------is compacting log------------");
-                return false;
+                logger_warn("delete snapshot file error. "
+                            "file_path(%s)",file_path);
             }
+            snapshot_files_.erase(snapshot_files_.begin());
         }
-		return true;
-	}
-
-	bool node::check_compacting_log()
-	{
-		acl::lock_guard lg(compacting_log_locker_);
-		return compacting_log_;
-	}
-
-	void node::async_compact_log()
-	{
-        do_compaction_log();
-        //log_compaction_worker_.do_compact_log();
-	}
-
+    }
 	bool node::make_snapshot() const
 	{
-        logger_debug(NODE_SECTION, 10, 
-                "-----------------------------");
 
 		std::string file_path;
 		acl_assert(make_snapshot_callback_);
 
         logger_debug(NODE_SECTION, 10,
-                     "invoke make_snapshot_callback_");
+                     "start make_snapshot_callback()");
 
 		if (!(*make_snapshot_callback_)(snapshot_path_, file_path))
 		{
@@ -713,7 +720,7 @@ namespace raft {
 		}
 
         logger_debug(NODE_SECTION, 10,
-                     "invoke make_snapshot_callback_ done");
+                     "make_snapshot_callback() done");
 
 		std::string snapshot_file = file_path;
 		size_t pos = file_path.find_last_of('.');
@@ -739,6 +746,8 @@ namespace raft {
                        "file path:%s",
                snapshot_file.c_str());
 
+        remove_old_snapshot();
+
 		return true;
 	}
 	void node::do_compaction_log() const
@@ -749,11 +758,14 @@ namespace raft {
 		std::string snapshot = get_snapshot();
         if (snapshot.empty())
         {
-            logger_debug(NODE_SECTION, 10, "snapshot empty");
+            logger_debug(NODE_SECTION, 10,
+                         "snapshot empty");
+
 			if (make_snapshot())
 			{
                 logger_debug(NODE_SECTION, 10,
-                             "make_snapshot ok. do compacting log again");
+                             "make_snapshot ok. "
+                                     "do compacting log again");
 				goto do_again;
 			}
 			else
@@ -784,23 +796,34 @@ namespace raft {
 
 		for (; it != log_infos.end(); ++it)
 		{
-			if (it->second <= ver.index_)
+            /**
+             * ver.index is snapshot last_log_index.
+             *
+             */
+			if (it->second < ver.index_)
 			{
 				count += log_manager_->discard_log(it->second);
 			}
 			//delete half of logs
-			if (count >= log_infos.size() / 2)
+			if (log_manager_->log_count() <= mini_log_count_)
 			{
 				break;
 			}
 		}
-		if (!count)
-		{
-			if (make_snapshot())
-			{
-				goto do_again;
-			}
-		}
+        if(!count)
+        {
+            if (make_snapshot())
+            {
+                logger_debug(NODE_SECTION, 10,
+                             "make_snapshot ok. "
+                                     "do compacting log again");
+                goto do_again;
+            }
+            else
+            {
+                logger_error("make snapshot error");
+            }
+        }
 		logger("log_compaction discard %d logs",count);
 	}
 
@@ -1026,8 +1049,8 @@ namespace raft {
         replicate_callbacks_t::iterator it = replicate_callbacks_.begin();
         for (; it != replicate_callbacks_.end();)
         {
-            if (!(*(it->second))(replicate_callback::E_NO_LEADER,
-                                 it->first))
+            if (!(*(it->second))(
+                    replicate_callback::E_NO_LEADER,it->first))
             {
                 return;
             }
@@ -1215,7 +1238,7 @@ namespace raft {
                         "--------------- "
                         "check_compacting_log ok "
                         "---------------");
-                async_compact_log();
+                async_compaction_log();
             }
 
             logger_debug(NODE_SECTION, 15, "write log ok.");
@@ -1316,7 +1339,11 @@ namespace raft {
 
 		std::string file_path = snapshot_tmp_->file_path();
 
-		acl_assert(snapshot_tmp_->fseek(0, SEEK_SET) != -1);
+		if(snapshot_tmp_->fseek(0, SEEK_SET) == -1)
+        {
+            logger_fatal("fseek error %s",
+                         acl::last_serror());
+        }
 		if (!raft::read(*snapshot_tmp_, ver))
 		{
 			logger_error("read snapshot file error.path :%s",
@@ -1364,6 +1391,10 @@ namespace raft {
 				snapshot.c_str(), 
 				acl::last_serror());
 		}
+
+        logger("snapshot ver.index_(%llu). "
+                       "last_log_index(%llu) ",
+               ver.index_, last_log_index());
 
 		/*it must be*/
 		if (last_log_index() < ver.index_)
@@ -1441,6 +1472,8 @@ namespace raft {
         }
 
         set_election_timer();
+        apply_log_.start();
+        log_compaction_worker_.start();
     }
 
 	bool node::handle_install_snapshot_request(
@@ -1474,6 +1507,10 @@ namespace raft {
 		}
 		/* Write data into snapshot file at given offset*/
 		const std::string &data = req.data();
+
+        if(data.empty())
+            logger_fatal("snapshot req data empty");
+
 		if (file->write(data.c_str(), data.size()) != data.size())
 			logger_fatal("file write error.%s", acl::last_serror());
 
@@ -1537,7 +1574,7 @@ namespace raft {
 		}
 
 		if (should_compact_log())
-			async_compact_log();
+            async_compaction_log();
 
 		return true;
 	}
@@ -1551,12 +1588,10 @@ namespace raft {
 
 	node::apply_log::apply_log(node& _node)
 		:node_(_node),
-		to_apply_(false),
 		to_stop_(false)
 	{
 		acl_pthread_mutex_init(&mutex_, NULL);
 		acl_pthread_cond_init(&cond_, NULL);
-        start();
 	}
 
 	node::apply_log::~apply_log()
@@ -1577,9 +1612,9 @@ namespace raft {
         logger_debug(NODE_SECTION, 10,
                      "committed_index(%llu)",
                      node_.committed_index());
+
 		acl_pthread_mutex_lock(&mutex_);
-		to_apply_ = true;
-		acl_pthread_cond_signal(&cond_);
+        acl_pthread_cond_signal(&cond_);
 		acl_pthread_mutex_unlock(&mutex_);
 	}
 
@@ -1588,17 +1623,13 @@ namespace raft {
 
 		acl_pthread_mutex_lock(&mutex_);
 
-		while (!to_apply_ && !to_stop_)
+		while (node_.applied_index() ==
+               node_.committed_index()  && !to_stop_)
         {
-            logger(".");
             acl_pthread_cond_wait(&cond_, &mutex_);
         }
-
-		bool result = to_apply_;
-        to_apply_ = false;
         acl_pthread_mutex_unlock(&mutex_);
-
-		return result && !to_stop_;
+		return !to_stop_;
 	}
 
 	void* node::apply_log::run()
@@ -1641,19 +1672,17 @@ namespace raft {
             acl_pthread_mutex_lock(&mutex_);
 
             //wait for do compaction event
-            while(!stop_ && !do_compact_log_)
+            while(!stop_ && !node_.should_compact_log())
                 acl_pthread_cond_wait(&cond_, &mutex_);
 
             acl_pthread_mutex_unlock(&mutex_);
 
-            if(do_compact_log_)
-            {
-                logger("++++++++[ start log compaction ]++++++");
-                node_.do_compaction_log();
-                logger("++++++++[ start log compaction end ]+++");
+            if(stop_)
+                break;
 
-                do_compact_log_ = false;
-            }
+            logger("++++++++[ start log compaction ]++++++");
+            node_.do_compaction_log();
+            logger("++++++++[ start log compaction end ]+++");
 
         }while(!stop_);
 
@@ -1663,11 +1692,7 @@ namespace raft {
 	void node::log_compaction::do_compact_log()
 	{
         acl_pthread_mutex_lock(&mutex_);
-        if(!do_compact_log_)
-        {
-            do_compact_log_ = true;
-            acl_pthread_cond_signal(&cond_);
-        }
+        acl_pthread_cond_signal(&cond_);
         acl_pthread_mutex_unlock(&mutex_);
 	}
 

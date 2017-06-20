@@ -24,7 +24,7 @@ namespace raft
          match_index_(0),
          next_index_(0),
          event_(0),
-         heart_inter_(3*1000),
+         heart_inter_(3000),
          rpc_client_(acl::http_rpc_client::get_instance()),
          rpc_fails_(0),
          req_id_(1)
@@ -44,7 +44,7 @@ namespace raft
 		acl_pthread_cond_init(&cond_, NULL);
 
         //init last_replicate_time_
-        gettimeofday(&last_replicate_time_, NULL);
+        gettimeofday(&last_heartbeat_time_, NULL);
     }
 	peer::~peer()
 	{
@@ -135,37 +135,58 @@ namespace raft
 			logger_error("open file snapshot failed");
 			return false;
 		}
-		if (!read(file, ver))
+
+        long long int file_size =  file.fsize();
+
+        if (!read(file, ver))
 		{
 			logger_error("snapshot read version failed.");
 			return false;
 		}
-		long long int file_size =  file.fsize();
+
 		long long int offset = 0;
+
+        logger("snapshot file size(%lld)", file_size);
 
 		while (node_.is_leader())
 		{
-			acl::string buffer(__1MB__);
-
-			if (file.fseek(offset, SEEK_SET) != -1)
+            if (file.fseek(offset, SEEK_SET) == -1)
 			{
-				logger_error("file fseek error.%s",acl::last_serror());
+				logger_error("file fseek error.%s",
+                             acl::last_serror());
 				return false;
 			}
-			file.read(buffer);
-			bool done = file_size == (buffer.size() + offset);
+
+            char *buffer = new char [__1MB__];
+
+			int bytes = file.read(buffer, __1MB__, false);
+            if(bytes == -1)
+            {
+                logger_fatal("file read error. %s",
+                             acl::last_serror());
+            }
+			bool done = file_size == (bytes + offset);
 
 			install_snapshot_request req;
 			install_snapshot_response resp;
 
-			req.set_data(buffer.c_str(), buffer.size());
+            req.set_term(node_.current_term());
+			req.set_data(buffer, (size_t)bytes);
 			req.set_done(done);
-			req.set_offset(offset);
+			req.set_offset((size_t)offset);
 			req.set_leader_id(node_.node_id());
+
 			req.mutable_snapshot_info()->
 				set_last_included_term(ver.term_);
-			req.mutable_snapshot_info()->
+
+            req.mutable_snapshot_info()->
 				set_last_snapshot_index(ver.index_);
+
+            logger("data size(%d)", bytes);
+
+            delete []buffer;
+
+            gettimeofday(&last_heartbeat_time_, NULL);
 
 			status_t status = rpc_client_.pb_call(
 				install_snapshot_service_path_,
@@ -183,7 +204,7 @@ namespace raft
 				node_.handle_new_term(resp.term());
 				return false;
 			}
-			offset = resp.bytes_stored();
+			offset = (long long int) resp.bytes_stored();
 			//done 
 			if (offset == file_size)
 			{
@@ -233,6 +254,9 @@ namespace raft
 				}
 				continue;
 			}
+
+            gettimeofday(&last_heartbeat_time_, NULL);
+
             logger_debug(PEER_SECTION, 2,
                          "term(%lu) "
                          "prev_log_term(%lu) "
@@ -244,7 +268,7 @@ namespace raft
             req.set_req_id(++req_id_);
 
 			//for next heartbeat time;
-			gettimeofday(&last_replicate_time_, NULL);
+
 
 			status = rpc_client_.pb_call(
 				replicate_service_path_,
@@ -349,8 +373,8 @@ namespace raft
 
         timespec timeout;
 
-        timeout.tv_sec = last_replicate_time_.tv_sec;
-        timeout.tv_nsec = last_replicate_time_.tv_usec * 1000;
+        timeout.tv_sec = last_heartbeat_time_.tv_sec;
+        timeout.tv_nsec = last_heartbeat_time_.tv_usec * 1000;
 
         timeout.tv_sec += heart_inter_ / 1000;
         timeout.tv_nsec += heart_inter_ % 1000 * 1000 * 1000;

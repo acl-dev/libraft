@@ -405,7 +405,9 @@ namespace raft
 		
 		bool check_compacting_log();
 
-		void async_compact_log();
+		void async_compaction_log();
+
+        void remove_old_snapshot()const;
 
 		bool make_snapshot() const;
 
@@ -458,7 +460,7 @@ namespace raft
 		/**
 		 * \brief apply log thread
 		 */
-		class apply_log : private acl::thread
+		class apply_log : public acl::thread
 		{
 		public:
 			explicit apply_log(node &);
@@ -468,7 +470,6 @@ namespace raft
 		private:
 			bool wait_to_apply();
 			node &node_;
-			bool to_apply_;
 			bool to_stop_;
 			acl_pthread_mutex_t mutex_;
 			acl_pthread_cond_t cond_;
@@ -477,7 +478,7 @@ namespace raft
 		/**
 		 * \brief do log compaction work thread
 		 */
-		class log_compaction : private acl::thread
+		class log_compaction : public acl::thread
 		{
 		public:
 			explicit log_compaction(node &_node);
@@ -549,9 +550,8 @@ namespace raft
 
 		size_t max_log_size_;
 		size_t max_log_count_;
-
-		bool		compacting_log_;
-		acl::locker compacting_log_locker_;
+        size_t mini_log_count_;
+        size_t max_snapshot_size_;
 
 
 		vote_responses_t vote_responses_;
