@@ -161,7 +161,7 @@ namespace raft
 			req.set_data(buffer.c_str(), buffer.size());
 			req.set_done(done);
 			req.set_offset(offset);
-			req.set_leader_id(node_.raft_id());
+			req.set_leader_id(node_.node_id());
 			req.mutable_snapshot_info()->
 				set_last_included_term(ver.term_);
 			req.mutable_snapshot_info()->

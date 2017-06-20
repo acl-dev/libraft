@@ -251,6 +251,7 @@ void memkv_service::init_http_rpc_client()
 void memkv_service::init_raft_node()
 {
 	node_ = new raft::node;
+    node_->set_node_id(cfg_.node_addr.id);
 	node_->set_log_path(cfg_.log_path);
 	node_->set_max_log_size((size_t) cfg_.max_log_size);
 	node_->set_max_log_count((size_t) cfg_.max_log_count);
@@ -311,33 +312,37 @@ void memkv_service::regist_service()
 }
 void memkv_service::reload()
 {
+    node_->reload();
     std::string file_path = node_->get_snapshot();
     if(file_path.size())
     {
         if(!load_snapshot(file_path))
             logger_fatal("load_snapshot error");
     }
-    raft::log_index_t applied_index = node_->applied_index();
-    acl_assert(curr_ver_.index_ <= applied_index);
+    raft::log_index_t committed_index = node_->committed_index();
+    acl_assert(curr_ver_.index_ <= committed_index);
     do
     {
-        if(curr_ver_.index_ == applied_index)
+        if(curr_ver_.index_ == committed_index)
         {
             logger("------reload ok! --------");
             logger("---kv_store size(%lu)----",store_.size());
             break;
         }
 
-
         std::string data;
-        if(!node_->read(curr_ver_.index_+1, data, curr_ver_))
+		raft::log_index_t next_index = curr_ver_.index_+1;
+        if(!node_->read(next_index , data, curr_ver_))
         {
             logger_fatal("read log failed!!!!!!!!!");
             return;
         }
+		acl_assert(curr_ver_.index_ == next_index);
 
         apply(data, curr_ver_);
 
+		//apply done .must update applied index now.
+		node_->set_applied_index(next_index);
     }while(true);
 }
 //raft from raft framework

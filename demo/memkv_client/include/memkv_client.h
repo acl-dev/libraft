@@ -112,6 +112,7 @@ public:
 
         for (int i = 0; i < services.size(); ++i)
         {
+            logger("call (%s)", services[i].c_str());
             status_t status =
                     rpc_client.json_call(
                             services[i].c_str(),req, resp);
@@ -124,7 +125,7 @@ public:
                        resp.status.c_str());
             }
         }
-        return "del request failed";
+        return "set request failed";
     }
 
     std::string del(const std::string &key)

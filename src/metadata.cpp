@@ -124,6 +124,9 @@ namespace raft
 			//if has not magic num. it has not data anymore.
 			if (get_uint32(write_pos_) != __MAGIC_START__)
             {
+                //get_uint32 will move write_pos_ forward
+                //read failed. reset write_pos_ to the end
+                write_pos_ -= sizeof(__MAGIC_START__);
                 logger("reload ok. "
                        "metadata entry count :%lu",
                        count);

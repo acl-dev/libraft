@@ -146,13 +146,27 @@ namespace raft
 
 
 		/**
-		* \brief return applied log index.
-		* when state machine log data.
-		* it can call applied_index() to get
-		* applied index of log data. and reload snapshot,logs to recovery
+		* \brief return committed log index.
+		* when state machine loss data.
+		* it can call and reload snapshot first.
+		* and then call committed_index() to get
+		* committed index of log data.
+		* reload logs to recovery remain data loss
 		* \return
 		*/
-		log_index_t applied_index();
+        log_index_t committed_index();
+
+        /**
+         * get applied index of node status
+         * @return return log index
+         */
+        log_index_t applied_index();
+        /**
+         * update applied index status.
+         * @param index index of log
+         */
+        void set_applied_index(log_index_t index);
+
 
 		/**
 		 * \brief check if leader now;
@@ -160,12 +174,13 @@ namespace raft
 		 */
 		bool is_leader();
 		
-		/**```
+		/**
 		 * \brief get cluster leader id
 		 * \return id of leader, it maybe empty when cluster has not leader,
 		 * or this node lose connect to cluster.
 		 */
 		std::string leader_id();
+
 
 		/**
 		 * \brief set peer id for this node
@@ -245,8 +260,14 @@ namespace raft
 		 * \brief return this node 's id
 		 * \return this node 's id .
 		 */
-		std::string raft_id()const;
+		std::string node_id()const;
 
+
+        /**
+         * set node id.
+         * @param id node id.unique in the cluster
+         */
+        void set_node_id(const std::string &id);
 		/**
 		* \brief this interface should regist to server to process vote 
 		* request  from other candidate
@@ -286,6 +307,10 @@ namespace raft
 				const install_snapshot_request &req,
 				install_snapshot_response &resp);
 
+        /**
+         * reload node log. metadata.
+         */
+        void reload();
         /**
          * start raft node.before invoke start.
          * U need to set node config done.
@@ -331,11 +356,11 @@ namespace raft
 
 		void set_leader_id(const std::string &leader_id);
 
-		log_index_t committed_index();
-
 		void set_committed_index(log_index_t index);
 
 		int role();
+
+        const char *role_str();
 
 		void set_role(int _role);
 
@@ -343,7 +368,6 @@ namespace raft
 
 		void set_vote_for(const std::string &vote_for);
 
-		void set_applied_index(log_index_t index);
 
 		bool build_replicate_log_request(
 			replicate_log_entries_request &request,
@@ -465,6 +489,7 @@ namespace raft
 			acl_pthread_cond_t cond_;
 			node &node_;
 			bool do_compact_log_;
+            bool stop_;
 		};
 
 		class election_timer : acl::thread
@@ -495,7 +520,8 @@ namespace raft
 
 		int		role_;
 
-		std::string raft_id_;
+        bool        start_;
+		std::string node_id_;
 		std::string leader_id_;
 		std::string vote_for_;
 		acl::locker	metadata_locker_;
