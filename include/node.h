@@ -133,15 +133,40 @@ namespace raft
 		 * \param data buffer to store the data.
 		 * \return return true if read ok.otherwise will return false;
 		 */
-		bool read(log_index_t index, std::string &data);
+		bool read(log_index_t index, std::string &data, version &ver);
+
+
+        /**
+         * get snapshot file from raft
+         * @return snapshot file path
+         * if return file path not empty.mean has snapshot.
+         * otherwise has not snapshot
+         */
+        std::string get_snapshot() const;
+
+
 		/**
-		* \brief return applied log index.
-		* when state machine log data.
-		* it can call applied_index() to get
-		* applied index of log data. and reload snapshot,logs to recovery
+		* \brief return committed log index.
+		* when state machine loss data.
+		* it can call and reload snapshot first.
+		* and then call committed_index() to get
+		* committed index of log data.
+		* reload logs to recovery remain data loss
 		* \return
 		*/
-		log_index_t applied_index();
+        log_index_t committed_index();
+
+        /**
+         * get applied index of node status
+         * @return return log index
+         */
+        log_index_t applied_index();
+        /**
+         * update applied index status.
+         * @param index index of log
+         */
+        void set_applied_index(log_index_t index);
+
 
 		/**
 		 * \brief check if leader now;
@@ -149,12 +174,13 @@ namespace raft
 		 */
 		bool is_leader();
 		
-		/**```
+		/**
 		 * \brief get cluster leader id
 		 * \return id of leader, it maybe empty when cluster has not leader,
 		 * or this node lose connect to cluster.
 		 */
 		std::string leader_id();
+
 
 		/**
 		 * \brief set peer id for this node
@@ -234,8 +260,14 @@ namespace raft
 		 * \brief return this node 's id
 		 * \return this node 's id .
 		 */
-		std::string raft_id()const;
+		std::string node_id()const;
 
+
+        /**
+         * set node id.
+         * @param id node id.unique in the cluster
+         */
+        void set_node_id(const std::string &id);
 		/**
 		* \brief this interface should regist to server to process vote 
 		* request  from other candidate
@@ -262,9 +294,11 @@ namespace raft
 				replicate_log_entries_response &resp);
 
 		/**
-		* \brief this interface should regist to server to process install_snapshot_request 
-		* when the follower miss logs and leader has not log to replicate to this node,
-		* leader will send snapshot file to follower instead.
+		* \brief this interface should regist to server to process
+		 * install_snapshot_request
+		* when the follower miss logs and leader has not log to
+		 * replicate to this node leader will send snapshot file to
+		 * follower instead.
 		* \param req install_snapshot_request send from leader.
 		* \param resp install_snapshot_response to send back to leader
 		* \return return true
@@ -273,6 +307,10 @@ namespace raft
 				const install_snapshot_request &req,
 				install_snapshot_response &resp);
 
+        /**
+         * reload node log. metadata.
+         */
+        void reload();
         /**
          * start raft node.before invoke start.
          * U need to set node config done.
@@ -295,8 +333,8 @@ namespace raft
 
 		//for peer
 		/**
-		 * \brief check is candicate
-		 * \return true if candicate,otherwise return false;
+		 * \brief check is candidate
+		 * \return true if candidate,otherwise return false;
 		 */
 		bool is_candidate();
 
@@ -318,11 +356,11 @@ namespace raft
 
 		void set_leader_id(const std::string &leader_id);
 
-		log_index_t committed_index();
-
 		void set_committed_index(log_index_t index);
 
 		int role();
+
+        const char *role_str();
 
 		void set_role(int _role);
 
@@ -330,7 +368,6 @@ namespace raft
 
 		void set_vote_for(const std::string &vote_for);
 
-		void set_applied_index(log_index_t index);
 
 		bool build_replicate_log_request(
 			replicate_log_entries_request &request,
@@ -352,8 +389,6 @@ namespace raft
 
 		void handle_new_term(term_t term);
 
-		bool get_snapshot(std::string &path) const;
-		
 		/**
    		 * 
 		 * \brief scan snapshot path,and find snapshot files
@@ -363,13 +398,16 @@ namespace raft
 
 		/**
 		 * \brief check should do log compaction now.
-		 * \return return true should to do log compaction,otherwise return false
+		 * \return return true should to do log compaction,
+		 * otherwise return false
 		 */
 		bool should_compact_log();
 		
 		bool check_compacting_log();
 
-		void async_compact_log();
+		void async_compaction_log();
+
+        void remove_old_snapshot()const;
 
 		bool make_snapshot() const;
 
@@ -387,13 +425,14 @@ namespace raft
 
 		log_index_t start_log_index()const;
 
-		//about peers function
+		//notify peers function
 		void notify_peers_replicate_log();
 
 		void notify_peers_to_election();
 
 		void update_peers_next_index(log_index_t index);
 		//end
+
 		void step_down();
 
 		void load_snapshot_file();
@@ -421,17 +460,16 @@ namespace raft
 		/**
 		 * \brief apply log thread
 		 */
-		class apply_log : private acl::thread
+		class apply_log : public acl::thread
 		{
 		public:
 			explicit apply_log(node &);
 			~apply_log();
-			void do_apply();
+			void to_apply ();
 			virtual void *run();
 		private:
 			bool wait_to_apply();
 			node &node_;
-			bool do_apply_;
 			bool to_stop_;
 			acl_pthread_mutex_t mutex_;
 			acl_pthread_cond_t cond_;
@@ -440,7 +478,7 @@ namespace raft
 		/**
 		 * \brief do log compaction work thread
 		 */
-		class log_compaction : private acl::thread
+		class log_compaction : public acl::thread
 		{
 		public:
 			explicit log_compaction(node &_node);
@@ -452,6 +490,7 @@ namespace raft
 			acl_pthread_cond_t cond_;
 			node &node_;
 			bool do_compact_log_;
+            bool stop_;
 		};
 
 		class election_timer : acl::thread
@@ -479,11 +518,11 @@ namespace raft
 		log_manager *log_manager_;
 
 		unsigned int election_timeout_;
-		log_index_t committed_index_;
-		log_index_t applied_index_;
-		term_t		current_term_;
+
 		int		role_;
-		std::string raft_id_;
+
+        bool        start_;
+		std::string node_id_;
 		std::string leader_id_;
 		std::string vote_for_;
 		acl::locker	metadata_locker_;
@@ -511,9 +550,8 @@ namespace raft
 
 		size_t max_log_size_;
 		size_t max_log_count_;
-
-		bool		compacting_log_;
-		acl::locker compacting_log_locker_;
+        size_t mini_log_count_;
+        size_t max_snapshot_size_;
 
 
 		vote_responses_t vote_responses_;
@@ -523,5 +561,6 @@ namespace raft
 		log_compaction     log_compaction_worker_;
 		apply_callback     *apply_callback_;
 		apply_log          apply_log_;
+        metadata           metadata_;
 	};
 }

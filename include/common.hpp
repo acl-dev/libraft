@@ -9,15 +9,6 @@ namespace raft
 		return sizeof(int);
 	}
 
-
-	inline size_t get_sizeof(const google::protobuf::Message &entry)
-	{
-		//sizeof(int) for len.see put_message
-		return entry.ByteSizeLong() + sizeof(int);
-	}
-
-	////
-
 	inline void put_bool(unsigned char *&buffer_, bool value)
 	{
 		*buffer_ = value ? 1 : 0;
@@ -153,9 +144,10 @@ namespace raft
 	}
 	inline bool write(acl::ostream &_stream, const std::string &data)
 	{
-		if (!write(_stream, static_cast<unsigned int>(data.size())))
+		unsigned int len = static_cast<unsigned int>(data.size());
+
+		if (!write(_stream,len))
 			return false;
-		
 		//empty data.
 		if (data.size() == 0)
 			return true;
@@ -258,7 +250,7 @@ namespace raft
 #endif
         return data;
     }
-
+	//close mmap file;
     inline void close_mmap(void *map, size_t map_size)
     {
 #if defined (_WIN32) || defined(_WIN64)
@@ -268,5 +260,80 @@ namespace raft
 #elif defined (linux)
         munmap(map, map_size);
 #endif
+    }
+
+	inline std::string 
+		get_filename(const std::string &file_path)
+	{
+		std::string file_name;
+		size_t pos = file_path.find_last_of('/');
+		
+		if (pos == std::string::npos)
+			pos = file_path.find_last_of('\\');
+
+		if (pos != std::string::npos)
+			file_name = file_name.substr(pos + 1);
+		else
+			file_name = file_path;
+
+		pos = file_name.find_last_of('.');
+		if (pos != std::string::npos)
+			return file_name.substr(0, pos);
+		return file_name;
+	}
+
+	/**
+	 * list dir files.
+	 */
+	inline std::set<std::string> 
+		list_dir(const std::string &path,
+                 const std::string &ext_)
+	{
+		std::set<std::string> files;
+		const char* file_path = NULL;
+
+		acl::scan_dir scan;
+		if (!scan.open(path.c_str(), false))
+		{
+			logger_error("scan open error %s",
+                         acl::last_serror());
+			return files;
+		}
+		while ((file_path = scan.next_file(true)))
+		{
+			if (ext_.size())
+			{
+				if (acl_strrncasecmp(file_path,
+                                     ext_.c_str(),
+                                     ext_.size()) == 0)
+				{
+					files.insert(file_path);
+				}
+			}
+			else
+			{
+				files.insert(file_path);
+			}
+			
+		}
+		return files;
+	}
+
+    /**
+     * if path is not end with slash('/') or backslash('\\').
+     * make it end with slash('/')
+     * @param path
+     */
+    inline void append_slash(std::string &path)
+    {
+        if (path.size())
+        {
+            //back
+            char ch = path[path.size() - 1];
+            if (ch != '/'  && ch != '\\')
+            {
+                path.push_back('/');
+            }
+        }
     }
 }

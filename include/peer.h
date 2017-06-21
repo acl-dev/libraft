@@ -51,6 +51,7 @@ namespace raft
 		 */
 		void set_match_index(log_index_t index);
 
+        void start();
 	private:
 		void notify_stop();
 
@@ -81,7 +82,7 @@ namespace raft
 		acl_pthread_cond_t cond_;
 		acl_pthread_mutex_t mutex_;
 		
-		timeval last_replicate_time_;
+		timeval last_heartbeat_time_;
 		long long heart_inter_;
 		
 		acl::string replicate_service_path_;

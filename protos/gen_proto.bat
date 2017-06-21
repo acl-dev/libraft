@@ -11,7 +11,7 @@ cd proto
 
 for /R %%s in (*.proto) do (
 echo %%s
-..\deps\protobuf\cmake\build\solution\Debug\protoc.exe --proto_path="%cd%" --cpp_out="%cd%" "%%s"
+protoc --proto_path="%cd%" --cpp_out="%cd%" "%%s"
 ) 
 
 
@@ -20,8 +20,3 @@ echo %%s
 copy %%s ..\src\proto_gen
 ) 
 
-
-for /R %%s in (*.pb.*) do (
-echo %%s
-rm %%s
-) 

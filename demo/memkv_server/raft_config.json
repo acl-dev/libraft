@@ -1,8 +1,8 @@
 {
     "log_path": "log/",
     "snapshot_path": "snapshot/",
-    "metadata_path": "metadata_path/",
-    "max_log_size": 1024000,
+    "metadata_path": "metadata/",
+    "max_log_size": 1024,
     "max_log_count": 6,
     "peer_addrs": [
         {

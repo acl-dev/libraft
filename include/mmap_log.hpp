@@ -11,6 +11,8 @@ namespace raft
 		 */
 		explicit mmap_log(log_index_t last_index, int file_size);
 
+        ~mmap_log();
+
 		virtual bool open(const std::string &filename);
 
 		virtual log_index_t write(const log_entry & entry);
@@ -31,11 +33,12 @@ namespace raft
 
 		virtual log_index_t last_index();
 
+        virtual term_t last_term();
+
 		virtual log_index_t start_index();
 
 		virtual std::string file_path();
 
-		~mmap_log();
 	private:
 
 		virtual void close();
@@ -64,6 +67,8 @@ namespace raft
 		std::string index_filepath_;
 		log_index_t start_index_;
 		log_index_t last_index_;
+        term_t      last_term_;
+        term_t      start_term_;
 		acl::locker write_locker_;
 
 		size_t data_buf_size_;

@@ -28,10 +28,11 @@ private:
 
 	void regist_service();
 
+    void reload();
 	//raft from raft framework
 	bool load_snapshot(const std::string &file_path);
 
-	bool make_snapshot(const std::string &path, std::string &filepath);
+	bool make_snapshot(const std::string &path, std::string &file_path);
 
 	bool apply(const std::string& data, const raft::version& ver);
 	//end

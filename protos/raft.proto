@@ -65,7 +65,7 @@ message install_snapshot_request
 	uint64 offset = 4;
 	bool done = 5;
 	string leader_id = 6;
-	string data = 7 ;
+	bytes data = 7 ;
 };
 
 message install_snapshot_response

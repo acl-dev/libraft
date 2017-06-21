@@ -21,11 +21,7 @@ include_directories(
 
 aux_source_directory(${memkv_server_SOURCE_DIR}/src memkv_server_sources)
 
-message(STATUS "memkv_server_sources: ${memkv_server_sources}")
-
 add_executable(memkv_server ${memkv_server_sources})
-
-
 
 target_link_libraries(memkv_server
         memkv_proto

@@ -129,9 +129,9 @@ char get_req_flag(const del_req &)
 //return true if replicate ok.otherwise return false
 template<class REQ, class RESP>
 bool replicate(const REQ& req,
-	RESP &resp,
-	raft::node *node,
-	raft::version &version)
+	           RESP &resp,
+	           raft::node *node,
+	           raft::version &version)
 {
 	std::string data = to_string(acl::gson(req));
 	data.push_back(get_req_flag(req));
@@ -186,6 +186,7 @@ void memkv_service::init()
 	init_raft_node();
 	regist_service();
 
+    reload();
     //start node
     node_->start();
 }
@@ -194,11 +195,11 @@ void memkv_service::load_config()
 	acl::ifstream file;
 	if (!file.open_read(cfg_file_path_.c_str()))
 	{
-		logger_fatal("open config file error."
-			"cfg_file_path_:%s "
-			"error:%s",
-			cfg_file_path_.c_str(),
-			acl::last_serror());
+		logger_fatal("create_new_file config file error."
+			         "cfg_file_path_:%s "
+			         "error:%s",
+			          cfg_file_path_.c_str(),
+			          acl::last_serror());
 		return;
 	}
 
@@ -233,23 +234,26 @@ void memkv_service::init_http_rpc_client()
 			const char *addr = cfg_.peer_addrs[i].addr.c_str();
 			const char *id = cfg_.peer_addrs[i].id.c_str();
 
-			service_path.format("/memkv%s/%s", id, paths[j].c_str());
+			service_path.format("/memkv%s/%s",
+				               id, 
+				               paths[j].c_str());
 
 			rpc_client.add_service(addr, service_path);
 
 			logger("add service:"
-						   "id:%s"
-						   "addr:%s "
-						   "service_path:%s",
-						   id,
-						   addr,
-						   service_path.c_str());
+				   "id:%s"
+				   "addr:%s "
+				   "service_path:%s",
+				   id,
+				   addr,
+				   service_path.c_str());
 		}
 	}
 }
 void memkv_service::init_raft_node()
 {
 	node_ = new raft::node;
+    node_->set_node_id(cfg_.node_addr.id);
 	node_->set_log_path(cfg_.log_path);
 	node_->set_max_log_size((size_t) cfg_.max_log_size);
 	node_->set_max_log_count((size_t) cfg_.max_log_count);
@@ -307,8 +311,43 @@ void memkv_service::regist_service()
 	server_.on_pb(service_path, node_,
                   &raft::node::handle_install_snapshot_request);
 
+}
+void memkv_service::reload()
+{
+    node_->reload();
+    std::string file_path = node_->get_snapshot();
+    if(file_path.size())
+    {
+        if(!load_snapshot(file_path))
+            logger_fatal("load_snapshot error");
+    }
+    raft::log_index_t committed_index = node_->committed_index();
+    acl_assert(curr_ver_.index_ <= committed_index);
+    do
+    {
+        if(curr_ver_.index_ == committed_index)
+        {
+            logger("------reload ok! --------");
+            logger("---kv_store size(%lu)----",store_.size());
+            break;
+        }
 
+        std::string data;
+		raft::log_index_t next_index = curr_ver_.index_+1;
+        if(!node_->read(next_index , data, curr_ver_))
+        {
+            logger_fatal("read log failed!!!!!!!!!");
+            return;
+        }
+		acl_assert(curr_ver_.index_ == next_index);
 
+		//apply the log data to store
+        apply(data, curr_ver_);
+
+		//apply done .must update applied index.
+		node_->set_applied_index(next_index);
+
+    }while(true);
 }
 //raft from raft framework
 bool memkv_service::load_snapshot(const std::string &file_path)
@@ -316,7 +355,7 @@ bool memkv_service::load_snapshot(const std::string &file_path)
 	acl::ifstream file;
 	if (!file.open_read(file_path.c_str()))
 	{
-		logger_error("open file error");
+		logger_error("create_new_file file error");
 		return false;
 	}
 	raft::version ver;
@@ -338,13 +377,14 @@ bool memkv_service::load_snapshot(const std::string &file_path)
 	}
 	acl::lock_guard lg(mem_store_locker_);
 
-	//clear old data.because of newer snapshot.
+	//clear old data.
 	store_.clear();
 	while (!file.eof())
 	{
 		std::string key;
 		std::string value;
-		if (raft::read(file, key) && raft::read(file, value))
+		if (raft::read(file, key) && 
+			raft::read(file, value))
 		{
 			store_.insert(std::make_pair(key, value));
 		}
@@ -356,13 +396,15 @@ bool memkv_service::load_snapshot(const std::string &file_path)
 	}
 	file.close();
 
+    curr_ver_ = ver;
 	logger("load_snapshot %s done.items:%u",
-		file_path.c_str(), items);
+		    file_path.c_str(),
+		    items);
 
 	return true;
 }
 bool memkv_service::make_snapshot(const std::string &path,
-	std::string &filepath)
+	                              std::string &file_path)
 {
 	acl::lock_guard lg(mem_store_locker_);
 	
@@ -370,44 +412,58 @@ bool memkv_service::make_snapshot(const std::string &path,
 	snapshot_path += path.c_str();
 	/**
 		file extension must not ".snapshot".
-		when making snapshot,it maybe happend
+		when making snapshot,it maybe 
 		happen something error.
 		eg: power off, disk error, and so on.
-		".snapshot" is good snapshot file extension.
+		".snapshot" mean good snapshot file.
 	*/
-	snapshot_path.format_append("%llu.%llu.temp_snapshot", 
-				curr_ver_.index_, 
-				curr_ver_.term_);
+	snapshot_path.format_append("%llu.%llu.temp_snapshot",
+				                curr_ver_.index_, 
+				                curr_ver_.term_);
+
+    logger("snapshot file_path(%s)", 
+		   snapshot_path.c_str());
 
 	acl::ofstream file;
 	if (!file.open_trunc(snapshot_path.c_str()))
 	{
-		logger_error("open file error.%s", snapshot_path.c_str());
+		logger_error("create_new_file file error.%s",
+                     snapshot_path.c_str());
+
 		return false;
 	}
 
 
 	//write raft::version .and store item count
 	if (!raft::write(file, curr_ver_) ||
-		raft::write(file, (unsigned int)store_.size()))
+        !raft::write(file, (unsigned int)store_.size()))
 	{
+        logger_error("write snapshot head error");
 		goto failed;
 	}
+
 	for (memkv_store_t::const_iterator it = store_.begin();
 		it != store_.end(); it++)
 	{
 		//write store key, and value
-		if (!raft::write(file, it->first) ||
-			!raft::write(file, it->second))
+		if (!raft::write(file, it->first))
 		{
+            logger_error("write snapshot data error");
+			goto failed;
+		}
+		if (!raft::write(file, it->second))
+		{
+			logger_error("write snapshot data error");
 			goto failed;
 		}
 	}
+
 	file.close();
-	filepath = snapshot_path;
+	file_path = snapshot_path;
 	return true;
+
 failed:
-	logger_error("write file error");
+	logger_error("--------[ [ [write [snapshot] file] error]----------");
 	file.close();
 	remove(snapshot_path.c_str());
 	return false;
@@ -431,10 +487,14 @@ bool memkv_service::apply(const std::string& data,
 		status = acl::gson(data.c_str(), req);
 		if (!status.first)
 		{
-			logger_error("req gson error");
+			logger_error("req gson error,%s",
+				         status.second.c_str());
+
+
 			return false;
 		}
 		store_[req.key] = req.value;
+        curr_ver_ = ver;
 		return true;
 	}
 	else if (flag == DEL_REQ)
@@ -443,10 +503,13 @@ bool memkv_service::apply(const std::string& data,
 		status = acl::gson(data.c_str(), req);
 		if (!status.first)
 		{
-			logger_error("req gson error");
+			logger_error("req gson error,%s", 
+				         status.second.c_str());
+
 			return false;
 		}
 		store_.erase(req.key);
+        curr_ver_ = ver;
 		return true;
 	}
 	logger_error("error req cmd");
@@ -459,8 +522,8 @@ bool memkv_service::check_leader()const
 {
 	return node_->is_leader();
 }
-//memkv serivces
 
+//memkv services
 bool memkv_service::get(const get_req &req, get_resp &resp)
 {
 	if (!check_leader())
@@ -469,12 +532,16 @@ bool memkv_service::get(const get_req &req, get_resp &resp)
 		return true;
 	}
 
+	
 	acl::lock_guard lg(mem_store_locker_);
 	memkv_store_t::iterator it = store_.find(req.key);
 	if (it != store_.end())
+	{
+		resp.status = "ok";
 		resp.value = it->second;
-	else
-		resp.status = "not found";
+		return true;
+	}
+	resp.status = "not found";
 	return true;
 }
 
@@ -488,9 +555,11 @@ bool memkv_service::exist(const exist_req &req, exist_resp& resp)
 	acl::lock_guard lg(mem_store_locker_);
 	memkv_store_t::iterator it = store_.find(req.key);
 	if (it != store_.end())
+	{
 		resp.status = "yes";
-	else
-		resp.status = "no";
+		return true;
+	}
+	resp.status = "no";
 	return true;
 }
 

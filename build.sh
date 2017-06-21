@@ -6,13 +6,29 @@
 cd protos/
 ./gen_proto.sh
 cd ../
-rm -rf ./build
+#rm -rf ./build
 mkdir build
 cd build
-ACL_DEV=/home/akzi/code/acl-dev
+ACL_DEV=/home/skyinno/code
 
 cmake .. -DACL_ROOT=${ACL_DEV}/acl \
 -DHTTP_RPC_INCLUDE_PATH=${ACL_DEV}/microservice/http_rpc/include \
 -DHTTP_RPC_LIB_PATH=${ACL_DEV}/microservice/build/http_rpc
 make
+cd bin
+mkdir -p 11081/log 11081/metadata 11081/snapshot
+mkdir -p 11082/log 11082/metadata 11082/snapshot
+cp ../../demo/memkv_server/raft_config.json 11081/
+cp ../../demo/memkv_server/raft_config.json 11082/
+cp memkv_server 11081
+cp memkv_server 11082
 
+echo "#!/bin/bash" > 11082/run.sh
+echo "cp ../memkv_server ." > 11082/run.sh
+echo "./memkv_server alone 11082" > 11082/run.sh
+chmod u+x 11081/run.sh
+echo "#!/bin/bash" > 11081/run.sh
+echo "cp ../memkv_server ." > 11081/run.sh
+echo "./memkv_server alone" > 11081/run.sh
+chmod u+x 11082/run.sh
+echo "ok!"

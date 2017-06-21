@@ -10,6 +10,7 @@
 #include "log_manager.h"
 #include "mmap_log.hpp"
 #include "peer.h"
+#include "metadata.h"
 #include "node.h"
 
 /*  raft paper https://raft.github.io/raft.pdf

@@ -13,10 +13,13 @@ namespace raft
 		:path_(path)
 	{
 		if(path_.empty())
-			logger("log path empty. and set it to \"log/\"");
-		
-		if (path_[path.size() - 1] != '/' && path_[path_.size() - 1] != '\\')
-			path_.push_back('/');
+        {
+            logger("log path empty. and set it to {log/}");
+            path_ = "log/";
+        }
+
+
+        append_slash(path_);
 
 		log_size_	= 4 * 1024 * 1024;
 		last_index_ = 0;
@@ -48,7 +51,9 @@ namespace raft
 
 			acl::string file_path(path_.c_str());
 
-			file_path.format_append("%llu%s",last_index_ + 1, __LOG_EXT__);
+			file_path.format_append("%llu%s",
+                                    last_index_ + 1,
+                                    __LOG_EXT__);
 
 			last_log_ = create(file_path.c_str());
 			if (!last_log_)
@@ -130,9 +135,7 @@ namespace raft
                 break;
             }
 
-
 			log *log_ = find_log(begin);
-			
 			if (!log_)
 				break;
 
@@ -174,7 +177,8 @@ namespace raft
 		if (logs_.size())
 			return logs_.begin()->first;
 		/*
-		 * when log_manager empty. and last_index_ eq start_index_;
+		 * when log_manager empty. and
+		 * last_index_ eq start_index_;
 		 */
 		return last_index_;
 	}
@@ -196,7 +200,10 @@ namespace raft
 		acl::lock_guard lg(locker_);
 
 		std::map<log_index_t, log_index_t> infos;
-		std::map<log_index_t, log*>::iterator it = logs_.begin();
+
+        std::map<log_index_t, log*>::iterator it
+                = logs_.begin();
+
 		for (; it != logs_.end(); ++it)
 		{
 			infos[it->first] = it->second->last_index();
@@ -206,7 +213,8 @@ namespace raft
 
 	int log_manager::discard_log(log_index_t last_index)
 	{
-		typedef std::map<log_index_t, log*>::iterator iterator_t;
+		typedef std::map<log_index_t, log*>::iterator
+                iterator_t;
 
 		acl::lock_guard lg(locker_);
 		int del_count_ = 0;
@@ -216,12 +224,13 @@ namespace raft
 		{
 			if (it->second->last_index() <= last_index)
 			{
-				std::string filepath = it->second->file_path();
+				std::string file_path = it->second->file_path();
 				it->second->auto_delete(true);
 				it->second->dec_ref();
 				logs_.erase(it++);
 				del_count_++;
-				logger("log_manager discard %s log", filepath.c_str());
+				logger("log_manager discard log( %s )",
+                       file_path.c_str());
 			}
 			else
 				break;
@@ -257,7 +266,9 @@ namespace raft
 			return last_log_;
 		}
 
-		std::map<log_index_t, log*>::reverse_iterator it = logs_.rbegin();
+		std::map<log_index_t, log*>::reverse_iterator it
+                = logs_.rbegin();
+
 		for (; it != logs_.rend(); ++it)
 		{
 			if (it->first <= index)
@@ -273,50 +284,34 @@ namespace raft
 	{
 		acl::lock_guard lg(locker_);
 
-		acl::scan_dir scan;
-		const char* file_path = NULL;
+        std::set<std::string> files =
+                list_dir(path_, __LOG_EXT__);
 
-		std::map<log_index_t, log*>::iterator it = logs_.begin();
-
-		for (; it != logs_.end(); ++it)
+        for(std::set<std::string>::iterator it=
+                files.begin(); it != files.end(); ++it)
 		{
-			it->second->inc_ref();
-		}
-		logs_.clear();
-
-		if (!scan.open(path_.c_str(), false))
-		{
-			logger_error("scan open error %s\r\n",
-				acl::last_serror());
-			return;
-		}
-
-		while ((file_path = scan.next_file(true)) != NULL)
-		{
-			if (acl_strrncasecmp(file_path,
-				__LOG_EXT__, strlen(__LOG_EXT__)) == 0)
-			{
-				std::string logfile= std::string(file_path);
-				log *_log = create(logfile);
-				if(!_log)
-				{
-					logger_error("create log error");
-					continue;
-				}
-				//delete empty log
-				if (_log->empty())
-				{
-					_log->auto_delete(true);
-					_log->dec_ref();
-					continue;
-				}
-				acl_assert(logs_.insert(
-					std::make_pair(_log->start_index(), _log)).second);
-			}
-		}
+            log *_log = create(*it);
+            if(!_log)
+            {
+                logger_error("create log error !!!");
+                continue;
+            }
+            //delete empty log
+            if (_log->empty())
+            {
+                _log->auto_delete(true);
+                _log->dec_ref();
+                continue;
+            }
+            log_index_t index = _log->start_index();
+            acl_assert(logs_.insert(
+                    std::make_pair(index, _log)).second);
+        }
 		if(logs_.size())
 		{
-			last_index_ = logs_.rbegin()->second->last_index();
+            log *_log = logs_.rbegin()->second;
+			last_index_ =_log->last_index();
+            last_term_ = _log->last_term();
 		}
 	}
 
