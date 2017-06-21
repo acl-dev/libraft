@@ -378,6 +378,8 @@ namespace raft
 		put_uint32(write_pos_, __MAGIC_END__);
 		vote_for_ = id;
 		vote_term_ = term;
+
+		return true;
 	}
 
 	std::pair<term_t, std::string> metadata::get_vote_for()
@@ -428,9 +430,10 @@ namespace raft
 
 	bool metadata::check_point()
 	{
-		set_applied_index(applied_index_);
-		set_committed_index(committed_index_);
-		set_current_term(current_term_);
-		set_vote_for(vote_for_, vote_term_);
+		return 
+			set_applied_index(applied_index_) && 
+			set_committed_index(committed_index_) && 
+			set_current_term(current_term_) && 
+			set_vote_for(vote_for_, vote_term_);
 	}
 }

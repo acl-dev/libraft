@@ -31,7 +31,8 @@ public:
 
     }
 
-    void set_cluster(const cluster_config &_cluster_config) {
+    void set_cluster(const cluster_config &_cluster_config)
+    {
         std::vector<std::string> services;
         services.push_back("store/get");
         services.push_back("store/set");
@@ -48,7 +49,8 @@ public:
                 std::string addr = _cluster_config.addrs[i].addr;
                 std::string id = _cluster_config.addrs[i].id;
 
-                service_path.format("/memkv%s/%s",id.c_str(),
+                service_path.format("/memkv%s/%s",
+                                    id.c_str(),
                                     services[j].c_str());
 
                 action = service_path.c_str();
@@ -69,12 +71,11 @@ public:
     std::pair<bool, std::string> get(const std::string &key)
     {
 
-
         get_req req;
         get_resp resp;
         std::vector<std::string> services = services_["get"];
 
-        if(services.empty())
+        if (services.empty())
             logger_fatal("not service to call");
 
         req.key = key;
@@ -82,20 +83,24 @@ public:
         for (int i = 0; i < services.size(); ++i)
         {
 
-            std::string service_path = services[i].c_str();
-            logger("do json call. service_path:%s", service_path.c_str());
-            status_t status =
-                    rpc_client.json_call(
-                            service_path.c_str(),
-                            req,
-                            resp);
+            const char* service_path = services[i].c_str();
 
-            if (status) {
+            logger("do json call. service_path:%s",
+                   service_path);
+
+            status_t status =
+                rpc_client.json_call(service_path, req, resp);
+
+            if (status)
+            {
                 if (resp.status == "ok")
                     return std::make_pair(true, resp.value);
-                logger("get response error. %s", resp.status.c_str());
+
+                logger("get response error. %s",
+                       resp.status.c_str());
             }
-            logger("json_call error. %s", status.error_str_.c_str());
+            logger("json_call error. %s",
+                   status.error_str_.c_str());
 
         }
         return std::make_pair(false, "get failed");
@@ -113,11 +118,12 @@ public:
         for (int i = 0; i < services.size(); ++i)
         {
             logger("call (%s)", services[i].c_str());
-            status_t status =
-                    rpc_client.json_call(
-                            services[i].c_str(),req, resp);
 
-            if (status) {
+            status_t status =
+                rpc_client.json_call(services[i].c_str(), req, resp);
+
+            if (status)
+            {
                 if (resp.status == "ok")
                     return resp.status;
 
@@ -135,14 +141,13 @@ public:
         std::vector<std::string> services = services_["det"];
 
         req.key = key;
-
         for (int i = 0; i < services.size(); ++i)
         {
 
             status_t status =
-                    rpc_client.json_call(
-                            services[i].c_str(), req, resp);
-            if (status) {
+                rpc_client.json_call(services[i].c_str(), req, resp);
+            if (status)
+            {
                 if (resp.status == "ok")
                     return resp.status;
 
@@ -165,9 +170,9 @@ public:
         {
 
             status_t status =
-                    rpc_client.json_call(
-                            services[i].c_str(), req, resp);
-            if (status) {
+                rpc_client.json_call(services[i].c_str(), req, resp);
+            if (status)
+            {
                 if (resp.status != "no leader")
                     return std::make_pair(true, resp.status);
 
@@ -175,7 +180,7 @@ public:
                        resp.status.c_str());
             }
         }
-        return std::make_pair(false,std::string("exist request failed"));
+        return std::make_pair(false, std::string("exist request failed"));
     };
     void print_service_info()
     {
@@ -183,10 +188,10 @@ public:
         service_map_iterator_t it = services_.begin();
         for (; it != services_.end(); ++it)
         {
-            logger("%s services:",it->first.c_str());
+            logger("%s services:", it->first.c_str());
             for (size_t i = 0; i < it->second.size(); ++i)
             {
-                logger("           %s",it->second[i].c_str());
+                logger("           %s", it->second[i].c_str());
             }
         }
         logger("-------------------services----------------------");

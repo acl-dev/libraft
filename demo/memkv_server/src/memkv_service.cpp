@@ -129,9 +129,9 @@ char get_req_flag(const del_req &)
 //return true if replicate ok.otherwise return false
 template<class REQ, class RESP>
 bool replicate(const REQ& req,
-	RESP &resp,
-	raft::node *node,
-	raft::version &version)
+	           RESP &resp,
+	           raft::node *node,
+	           raft::version &version)
 {
 	std::string data = to_string(acl::gson(req));
 	data.push_back(get_req_flag(req));
@@ -196,10 +196,10 @@ void memkv_service::load_config()
 	if (!file.open_read(cfg_file_path_.c_str()))
 	{
 		logger_fatal("create_new_file config file error."
-			"cfg_file_path_:%s "
-			"error:%s",
-			cfg_file_path_.c_str(),
-			acl::last_serror());
+			         "cfg_file_path_:%s "
+			         "error:%s",
+			          cfg_file_path_.c_str(),
+			          acl::last_serror());
 		return;
 	}
 
@@ -234,17 +234,19 @@ void memkv_service::init_http_rpc_client()
 			const char *addr = cfg_.peer_addrs[i].addr.c_str();
 			const char *id = cfg_.peer_addrs[i].id.c_str();
 
-			service_path.format("/memkv%s/%s", id, paths[j].c_str());
+			service_path.format("/memkv%s/%s",
+				               id, 
+				               paths[j].c_str());
 
 			rpc_client.add_service(addr, service_path);
 
 			logger("add service:"
-						   "id:%s"
-						   "addr:%s "
-						   "service_path:%s",
-						   id,
-						   addr,
-						   service_path.c_str());
+				   "id:%s"
+				   "addr:%s "
+				   "service_path:%s",
+				   id,
+				   addr,
+				   service_path.c_str());
 		}
 	}
 }
@@ -339,10 +341,12 @@ void memkv_service::reload()
         }
 		acl_assert(curr_ver_.index_ == next_index);
 
+		//apply the log data to store
         apply(data, curr_ver_);
 
-		//apply done .must update applied index now.
+		//apply done .must update applied index.
 		node_->set_applied_index(next_index);
+
     }while(true);
 }
 //raft from raft framework
@@ -373,13 +377,14 @@ bool memkv_service::load_snapshot(const std::string &file_path)
 	}
 	acl::lock_guard lg(mem_store_locker_);
 
-	//clear old data.because of newer snapshot.
+	//clear old data.
 	store_.clear();
 	while (!file.eof())
 	{
 		std::string key;
 		std::string value;
-		if (raft::read(file, key) && raft::read(file, value))
+		if (raft::read(file, key) && 
+			raft::read(file, value))
 		{
 			store_.insert(std::make_pair(key, value));
 		}
@@ -393,12 +398,13 @@ bool memkv_service::load_snapshot(const std::string &file_path)
 
     curr_ver_ = ver;
 	logger("load_snapshot %s done.items:%u",
-		file_path.c_str(), items);
+		    file_path.c_str(),
+		    items);
 
 	return true;
 }
 bool memkv_service::make_snapshot(const std::string &path,
-	std::string &file_path)
+	                              std::string &file_path)
 {
 	acl::lock_guard lg(mem_store_locker_);
 	
@@ -412,10 +418,12 @@ bool memkv_service::make_snapshot(const std::string &path,
 		".snapshot" mean good snapshot file.
 	*/
 	snapshot_path.format_append("%llu.%llu.temp_snapshot",
-				curr_ver_.index_, 
-				curr_ver_.term_);
+				                curr_ver_.index_, 
+				                curr_ver_.term_);
 
-    logger("snapshot file_path(%s)", snapshot_path.c_str());
+    logger("snapshot file_path(%s)", 
+		   snapshot_path.c_str());
+
 	acl::ofstream file;
 	if (!file.open_trunc(snapshot_path.c_str()))
 	{
@@ -438,10 +446,14 @@ bool memkv_service::make_snapshot(const std::string &path,
 		it != store_.end(); it++)
 	{
 		//write store key, and value
-		if (!raft::write(file, it->first) ||
-			!raft::write(file, it->second))
+		if (!raft::write(file, it->first))
 		{
             logger_error("write snapshot data error");
+			goto failed;
+		}
+		if (!raft::write(file, it->second))
+		{
+			logger_error("write snapshot data error");
 			goto failed;
 		}
 	}
@@ -449,8 +461,9 @@ bool memkv_service::make_snapshot(const std::string &path,
 	file.close();
 	file_path = snapshot_path;
 	return true;
+
 failed:
-	logger_error("----------------write snapshot file error!!!!!!!!!!!!!");
+	logger_error("--------[ [ [write [snapshot] file] error]----------");
 	file.close();
 	remove(snapshot_path.c_str());
 	return false;
@@ -474,7 +487,10 @@ bool memkv_service::apply(const std::string& data,
 		status = acl::gson(data.c_str(), req);
 		if (!status.first)
 		{
-			logger_error("req gson error");
+			logger_error("req gson error,%s",
+				         status.second.c_str());
+
+
 			return false;
 		}
 		store_[req.key] = req.value;
@@ -487,7 +503,9 @@ bool memkv_service::apply(const std::string& data,
 		status = acl::gson(data.c_str(), req);
 		if (!status.first)
 		{
-			logger_error("req gson error");
+			logger_error("req gson error,%s", 
+				         status.second.c_str());
+
 			return false;
 		}
 		store_.erase(req.key);
@@ -514,12 +532,16 @@ bool memkv_service::get(const get_req &req, get_resp &resp)
 		return true;
 	}
 
+	
 	acl::lock_guard lg(mem_store_locker_);
 	memkv_store_t::iterator it = store_.find(req.key);
 	if (it != store_.end())
+	{
+		resp.status = "ok";
 		resp.value = it->second;
-	else
-		resp.status = "not found";
+		return true;
+	}
+	resp.status = "not found";
 	return true;
 }
 
@@ -533,9 +555,11 @@ bool memkv_service::exist(const exist_req &req, exist_resp& resp)
 	acl::lock_guard lg(mem_store_locker_);
 	memkv_store_t::iterator it = store_.find(req.key);
 	if (it != store_.end())
+	{
 		resp.status = "yes";
-	else
-		resp.status = "no";
+		return true;
+	}
+	resp.status = "no";
 	return true;
 }
 
