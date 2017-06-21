@@ -44,7 +44,12 @@ int main(int argc, char *argv[])
 
         std::string key = argv[2];
 
-        std::cout << client.get(key).second << std::endl;
+        std::pair<bool, std::string> result = client.get(key);
+        if(result.first)
+        {
+            std::cout << "get " << key << " ok . "<< result.second << std::endl;
+        }else
+            std::cout << "get " <<key << "failed. "<<result.second  << std::endl;
     }
     else if(cmd == std::string("set"))
     {
