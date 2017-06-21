@@ -36,7 +36,7 @@ cd libraft
 ```
 
 ## how to use libraft
-to see demo [memkv](https://github.com/acl-dev/libraft/tree/master/demo/memkv_server)
+to see the demo [memkv](https://github.com/acl-dev/libraft/tree/master/demo/)
 
 
 ## contact us
