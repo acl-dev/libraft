@@ -48,3 +48,5 @@ cmake-build-debug/
 ./include/proto_gen/*
 
 ./src/proto_gen/*
+#genarate from protobuf proto
+*.pb.*
