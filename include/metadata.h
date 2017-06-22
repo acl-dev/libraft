@@ -1,6 +1,7 @@
 #pragma once
 namespace raft
 {
+
 	class metadata
 	{
 	public:
@@ -40,6 +41,10 @@ namespace raft
 
 		std::pair<term_t,std::string> get_vote_for();
 
+		bool set_peer_infos(const std::vector<peer_info> &infos);
+
+		std::vector<peer_info> get_peer_info();
+
         void print_status();
 	private:
         bool create_new_file ();
@@ -69,6 +74,7 @@ namespace raft
 		std::string vote_for_;
 		term_t vote_term_;
 
+		std::vector<peer_info> peer_infos_;
 		acl::locker locker_;
 		std::string path_;
         std::string file_path_;

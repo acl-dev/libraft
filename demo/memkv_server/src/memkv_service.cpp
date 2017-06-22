@@ -224,10 +224,10 @@ void memkv_service::init_raft_node()
 	node_->set_metadata_path(cfg_.metadata_path);
 	node_->set_snapshot_path(cfg_.snapshot_path);
 
-	std::vector<raft::node::peer_info> peer_infos;
+	std::vector<raft::peer_info> peer_infos;
 	for (size_t i = 0; i < cfg_.peer_addrs.size(); i++)
 	{
-        raft::node::peer_info _peer_info;
+        raft::peer_info _peer_info;
         _peer_info.peer_id_ = cfg_.peer_addrs[i].id;
         _peer_info.addr_    = cfg_.peer_addrs[i].addr;
 

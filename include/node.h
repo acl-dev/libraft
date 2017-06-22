@@ -1,6 +1,12 @@
 #pragma once
 namespace raft
 {
+    struct peer_info
+    {
+        std::string peer_id_;
+        std::string addr_;
+    };
+
     /**
      * current node status version.
      * term is raft term.
@@ -9,13 +15,17 @@ namespace raft
      */
     struct version
     {
-        explicit version(log_index_t index = 0, term_t term = 0):
-                index_(index),term_(term){}
+        explicit version(log_index_t index = 0, term_t term = 0)
+                : index_(index),
+                  term_(term)
+        {
 
+        }
         log_index_t index_;
         term_t term_;
     };
 
+    bool write(acl::ofstream &file, const std::vector<peer_info> &infos_);
 	/**
 	 * \brief write a version abj to file
 	 * \param file file stream
@@ -48,10 +58,12 @@ namespace raft
 		 * \param ver user should save this version for doing snapshot 
 		 * in the future
 		 * snapshot need version to store snapshot info into file
-		 * \return return true when user apply data ok. and node will auto update
-		 * applied index. return false, node will invoke apply data again and again.
+		 * \return return true when user apply data ok. and node will
+		 * auto update applied index. return false,
+		 * node will invoke apply data again and again.
 		 */
-		virtual bool operator()(const std::string& data, const version& ver) = 0;
+		virtual bool operator()(const std::string& data,
+                                const version& ver) = 0;
 	};
 
 
@@ -106,16 +118,20 @@ namespace raft
 		 * to node.
 		 * \param path snapshot path.snapshot file will create in this path.
 		 * the path is the same to node set_snapshot_path(const std::string &path)
-		 * \param filepath is snapshot file path.and it's ext name must not be ".snapshot".
+		 * \param filepath is snapshot file path.
+		 * and it's ext name must not be ".snapshot".
 		 * because "*.snapshot" is finished snapshot file path.
-		 * node will rename it's extension name to ".snapshot" when operator()(...)return true.
-		 * \return return true if do snapshot ok.return false mean something error happend 
+		 * node will rename it's extension name to ".snapshot"
+		 * when operator()(...)return true.
+		 * \return return true if do snapshot ok.
+		 * return false mean something error happend
 		 * ,making snapshot failed
 		 */
 		virtual bool operator()(const std::string &path, std::string &filepath) = 0;
 	};
 
-	/**
+    class metadata;
+    /**
 	 * \brief raft node
 	 */
 	class node
@@ -219,30 +235,36 @@ namespace raft
 
         ///raft config interface
     public:
-        struct peer_info
-        {
-            std::string peer_id_;
-            std::string addr_;
-        };
+
 		/**
 		 * \brief set peer id for this node
 		 * \param peers peer id vector 
 		 */
 		void set_peers(const std::vector<peer_info> &peer_infos_);
-		/**
-		 * \brief give snapshot_callback handle to node .
-		 * when leader send a snapshot file to this node .it will be invoke to user
-		 * and user should reset state machine, and reload snapshot file to state 
-		 * machine .
-		 * \param callback snapshot_callback obj
-		 */
+
+        /**
+         * get peer_info from node.
+         * when make snapshot.state machine ,will get peer_info and
+         * store it in snapshot file.
+         * @return peer_info
+         */
+        std::vector<peer_info> get_peer_infos();
+        /**
+         * \brief give snapshot_callback handle to node .
+         * when leader send a snapshot file to this node .it will be invoke to user
+         * and user should reset state machine, and reload snapshot file to state
+         * machine .
+         * \param callback snapshot_callback obj
+         */
 		void set_load_snapshot_callback(load_snapshot_callback *callback);
 		
 		/**
 		 * \brief set make snapshot callback handle.
-		 * when node to do log compaction,it will try to make a snapshot, and delete
-		 * useless log files. user must to invoke this interface to give a make snapshot
-		 * function handle to node.otherwise ,it will crush when do log compaction
+		 * when node to do log compaction,it will try to make a snapshot,
+		 * and delete useless log files.
+		 * user must to invoke this
+		 * interface to set make_snapshot_callback handle to node.
+		 * otherwise it will crush when do log compaction
 		 * \param callback make_snapshot_callback
 		 */
 		void set_make_snapshot_callback(make_snapshot_callback* callback);
@@ -251,7 +273,8 @@ namespace raft
 		 * \brief bind replicate_callback handle to this node.
 		 * when node is not leader,it will receive data from leader
 		 * and apply_callback::apply(...) will be invoke after leader has commited
-		 * the index of data. and then in the callback function apply_callback::apply()
+		 * the index of data. and then in the callback
+		 * function apply_callback::apply()
 		 * user can recevie the data. and apply to user state machine.
 		 * \param callback replicate_callback handle,
 		 */
@@ -477,7 +500,9 @@ namespace raft
 
 		void make_log_entry(const std::string &data, log_entry &entry);
 
-		bool write_log(const std::string &data, log_index_t &index, term_t &term);
+		bool write_log(const std::string &data,
+                       log_index_t &index,
+                       term_t &term);
 
 		void add_replicate_callback(const version& version, 
 									replicate_callback* callback);
@@ -592,6 +617,6 @@ namespace raft
 		log_compaction     log_compaction_worker_;
 		apply_callback     *apply_callback_;
 		apply_log          apply_log_;
-        metadata           metadata_;
+        metadata           *metadata_;
 	};
 }

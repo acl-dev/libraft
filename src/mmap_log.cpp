@@ -1,10 +1,7 @@
 #include "raft.hpp"
 #define __MAGIC_START__ 123456789
 #define __MAGIC_END__   987654321
-//#define __64k__			(64*1024)
-
-//for test
-#define __64k__			(1024)
+#define __64k__			(64*1024)
 
 #ifndef __INDEX__EXT__
 #define __INDEX__EXT__ ".index"

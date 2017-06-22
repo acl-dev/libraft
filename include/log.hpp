@@ -20,7 +20,7 @@ namespace raft
 		 * \param filepath filepath to store log. 
 		 * \return if open ok return true,otherwise return false
 		 */
-		virtual bool open(const std::string &filepath) = 0;
+		virtual bool open(const std::string &file_path) = 0;
 
 		/**
 		 * \brief get log file path
@@ -45,10 +45,10 @@ namespace raft
 
 		/**
 		 * \brief read one log entry
-		 * \param index the index of log entry to be readed
+		 * \param index the index of log entry to be reload
 		 * \param entry entry to store log data
 		 * \return return true if read log entry ok
-		 * return false, something error happend
+		 * return false, something error happen
 		 */
 		virtual bool read(log_index_t index, log_entry &entry) = 0;
 

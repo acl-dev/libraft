@@ -15,6 +15,7 @@
 #define COMMITTED_INDEX 2
 #define VOTE_FOR		3
 #define CURRENT_TERM	4
+#define PEER_INFO       5
 
 #define CURRENT_TERM_LEN    \
 (sizeof(int) * 2 + sizeof(term_t) + sizeof(char))
@@ -43,10 +44,11 @@ namespace raft
 		applied_index_   = 0;
         vote_term_       = 0;
 
-		max_buffer_size_ = max_file_size;
 		write_pos_  = 0;
 		buf_        = 0;
 		file_index_ = 0;
+
+		max_buffer_size_ = max_file_size;
 	}
     metadata::~metadata ()
     {
@@ -390,6 +392,50 @@ namespace raft
 		return std::make_pair(vote_term_, vote_for_);
 	}
 
+    bool metadata::set_peer_infos(const std::vector<peer_info> &infos)
+    {
+        acl::lock_guard lg(locker_);
+
+        unsigned int len = sizeof(int);
+        for (size_t i = 0; i < infos.size(); ++i)
+        {
+            len += sizeof(unsigned int);
+            len += infos[i].addr_.size();
+
+            len += sizeof(unsigned int);
+            len += infos[i].peer_id_.size();
+        }
+
+        unsigned char *buffer = new unsigned char[len];
+        unsigned char *ptr = buffer;
+        put_uint32(ptr, (unsigned int) infos.size());
+        for (size_t j = 0; j < infos.size(); ++j)
+        {
+            put_string(ptr, infos[j].peer_id_);
+            put_string(ptr, infos[j].addr_);
+        }
+        acl_assert(ptr == buffer + len);
+
+        size_t data_len = sizeof(unsigned int) * 2 + sizeof(char) + len;
+
+        if (!check_remain_buffer(data_len))
+        {
+            logger_error("write metadata error");
+            return false;
+        }
+        std::string data((char*)buffer, len);
+        put_uint32(write_pos_, __MAGIC_START__);
+        put_uint8(write_pos_, PEER_INFO);
+        put_string(write_pos_, data);
+        put_uint32(write_pos_, __MAGIC_END__);
+        peer_infos_ = infos;
+    }
+
+    std::vector<peer_info> metadata::get_peer_info()
+    {
+        acl::lock_guard lg(locker_);
+        return peer_infos_;
+    }
 	bool metadata::open(const std::string &file_path, bool create)
 	{
 		long long size = acl_file_size(file_path.c_str());

@@ -1,5 +1,4 @@
 #include "raft.hpp"
-#include <algorithm>
 #include <iostream>
 
 #ifndef __10MB__ 
@@ -19,12 +18,35 @@
 
 namespace raft
 {
+
     const static std::string g_magic_string("raft-snapshot-head");
 
-    struct snapshot_head {
-        std::string magic_string_;
+    struct snapshot_head
+    {
+        std::string   magic_string_;
         snapshot_info info_;
     };
+
+    static inline bool write(acl::ofstream &file, const peer_info &info)
+    {
+        return  write(file, info.peer_id_) &&
+                write(file, info.addr_);
+    }
+
+    bool write(acl::ofstream &file, const std::vector<peer_info> &infos_)
+    {
+        write(file, (unsigned int) infos_.size());
+        for (int i = 0; i < infos_.size(); ++i)
+        {
+            if(!write(file, infos_[i]))
+            {
+                logger_error("write peer_info error(%s)",
+                             acl::last_serror());
+                return false;
+            }
+        }
+        return true;
+    }
 
     bool write(acl::ostream &stream, const version &ver)
     {
@@ -91,7 +113,8 @@ namespace raft
        election_timer_(*this),
        log_compaction_worker_(*this),
        apply_callback_(NULL),
-       apply_log_(*this)
+       apply_log_(*this),
+       metadata_(NULL)
     {
         metadata_path_ = "metadata/";
         log_path_ = "log/";
@@ -258,7 +281,7 @@ namespace raft
 
     raft::term_t node::current_term()
     {
-        return metadata_.get_current_term();
+        return metadata_->get_current_term();
     }
     std::string node::leader_id()
     {
@@ -269,6 +292,18 @@ namespace raft
     void node::set_peers(const std::vector<peer_info> &peer_infos)
     {
         peer_infos_ = peer_infos;
+
+    }
+
+    std::vector<peer_info> node::get_peer_infos()
+    {
+        acl::lock_guard lg(metadata_locker_);
+        if(peer_infos_.empty())
+        {
+            if(metadata_)
+                return metadata_->get_peer_info();
+        }
+        return peer_infos_;
     }
 
     void node::set_make_snapshot_callback(
@@ -289,12 +324,12 @@ namespace raft
     {
         logger_debug(ELECTION_SECTION, 2, "set term to %llu", term);
 
-        if (metadata_.get_current_term() < term)
+        if (metadata_->get_current_term() < term)
         {
             /*new term. has a vote to election who is leader*/
-            if (!metadata_.set_vote_for("", term))
+            if (!metadata_->set_vote_for("", term))
                 logger_fatal("metadata set_vote_for error");
-            if (!metadata_.set_current_term(term))
+            if (!metadata_->set_current_term(term))
                 logger_fatal("metadata set_vote_for error");
         }
     }
@@ -318,7 +353,7 @@ namespace raft
 
     void node::set_vote_for(const std::string& vote_for)
     {
-        metadata_.set_vote_for(vote_for, current_term());
+        metadata_->set_vote_for(vote_for, current_term());
     }
 
     bool node::log_ok()
@@ -333,7 +368,7 @@ namespace raft
     }
     std::string node::vote_for()
     {
-        return  metadata_.get_vote_for().second;
+        return  metadata_->get_vote_for().second;
     }
 
     void node::set_role(int _role)
@@ -348,7 +383,7 @@ namespace raft
 
     log_index_t node::applied_index()
     {
-        return metadata_.get_applied_index();
+        return metadata_->get_applied_index();
     }
 
     void node::set_applied_index(log_index_t index)
@@ -358,17 +393,17 @@ namespace raft
             /**
              * apply should increase one by one
              */
-            if (metadata_.get_applied_index() != index - 1)
+            if (metadata_->get_applied_index() != index - 1)
             {
                 logger_fatal("applied error."
                              "applied_index(%llu) "
                              "index(%llu)",
-                             metadata_.get_applied_index(),
+                             metadata_->get_applied_index(),
                              index);
             }
         }
 
-        if (!metadata_.set_applied_index(index))
+        if (!metadata_->set_applied_index(index))
             logger_fatal("metadata set_applied_index");
     }
     raft::term_t node::last_log_term()const
@@ -791,8 +826,10 @@ namespace raft
     {
         logger_debug(NODE_SECTION, 10,
                      "----do compacting log start ---------");
+        std::string snapshot;
+
     do_again:
-        std::string snapshot = get_snapshot();
+        snapshot = get_snapshot();
         if (snapshot.empty())
         {
             logger_debug(NODE_SECTION, 10,
@@ -869,7 +906,7 @@ namespace raft
         logger_debug(NODE_SECTION, 10,
                      "set committed to %llu", index);
 
-        if (!metadata_.set_committed_index(index))
+        if (!metadata_->set_committed_index(index))
             logger_fatal("metadata set_committed_index error");
     }
 
@@ -951,7 +988,7 @@ namespace raft
 
     raft::log_index_t node::committed_index()
     {
-        return metadata_.get_committed_index();
+        return metadata_->get_committed_index();
     }
 
     raft::log_index_t node::start_log_index()const
@@ -1520,13 +1557,20 @@ namespace raft
         log_manager_->set_log_size(max_log_size_);
         log_manager_->reload_logs();
 
-        if (!metadata_.reload(metadata_path_))
+        acl_assert(!metadata_);
+
+        metadata_ = new metadata();
+        if (!metadata_->reload(metadata_path_))
         {
             logger_error("load metadata error.path(%s)",
                          metadata_path_.c_str());
             return false;
         }
-        metadata_.print_status();
+        if(peer_infos_.empty())
+            peer_infos_ = metadata_->get_peer_info();
+
+        metadata_->print_status();
+
         return true;
     }
     void node::start()
@@ -1538,6 +1582,9 @@ namespace raft
         log_compaction_worker_.start();
 
         set_election_timer();
+
+        if(!peer_infos_.empty())
+            metadata_->set_peer_infos(peer_infos_);
     }
 
     bool node::handle_install_snapshot_request(
