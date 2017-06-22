@@ -22,8 +22,6 @@ private:
 
 	void load_config();
 
-	void init_http_rpc_client();
-
 	void init_raft_node();
 
 	void regist_service();

@@ -15,7 +15,7 @@ namespace raft
 		
 		virtual ~log_manager();
 
-		void reload_logs();
+		bool reload_logs();
 
 		log_index_t write(const log_entry &entry);
 		

@@ -280,7 +280,7 @@ namespace raft
 		return NULL;
 	}
 
-	void log_manager::reload_logs()
+	bool log_manager::reload_logs()
 	{
 		acl::lock_guard lg(locker_);
 
@@ -293,8 +293,10 @@ namespace raft
             log *_log = create(*it);
             if(!_log)
             {
-                logger_error("create log error !!!");
-                continue;
+                logger_error("create log error "
+                             "file_path(%s)",
+							 it->c_str());
+                return false;
             }
             //delete empty log
             if (_log->empty())
@@ -313,6 +315,7 @@ namespace raft
 			last_index_ =_log->last_index();
             last_term_ = _log->last_term();
 		}
+        return true;
 	}
 
 }

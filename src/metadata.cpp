@@ -92,12 +92,14 @@ namespace raft
 			//the new one in the files last one.
 			if (!open(*it, false))
 			{
-				logger_error("create_new_file file error.");
+				logger_error("open file error. "
+							 "file_path(%s)",
+							 it->c_str());
 				continue;
 			}
 			if (reload())
 			{
-                file_index_ = atoll(it->c_str());
+                file_index_ = (size_t) atoll(it->c_str());
                 logger("reload_file ok."
                        "file_index(%lu) file_path(%s)",
                        file_index_,

@@ -182,7 +182,6 @@ memkv_service::~memkv_service()
 void memkv_service::init()
 {
 	load_config();
-	init_http_rpc_client();
 	init_raft_node();
 	regist_service();
 
@@ -214,42 +213,7 @@ void memkv_service::load_config()
 		logger_fatal("gson error.%s", ret.second.c_str());
 	}
 }
-void memkv_service::init_http_rpc_client()
-{
-	acl::http_rpc_client &rpc_client = 
-		acl::http_rpc_client::get_instance();
 
-	std::vector<std::string> paths;
-
-    paths.push_back("raft/vote_req");
-	paths.push_back("raft/replicate_log_req");
-	paths.push_back("raft/install_snapshot_req");
-
-
-	for (size_t i = 0; i < cfg_.peer_addrs.size(); i++)
-	{
-		for (size_t j = 0; j < paths.size(); j++)
-		{
-			acl::string service_path;
-			const char *addr = cfg_.peer_addrs[i].addr.c_str();
-			const char *id = cfg_.peer_addrs[i].id.c_str();
-
-			service_path.format("/memkv%s/%s",
-				               id, 
-				               paths[j].c_str());
-
-			rpc_client.add_service(addr, service_path);
-
-			logger("add service:"
-				   "id:%s"
-				   "addr:%s "
-				   "service_path:%s",
-				   id,
-				   addr,
-				   service_path.c_str());
-		}
-	}
-}
 void memkv_service::init_raft_node()
 {
 	node_ = new raft::node;
@@ -260,12 +224,16 @@ void memkv_service::init_raft_node()
 	node_->set_metadata_path(cfg_.metadata_path);
 	node_->set_snapshot_path(cfg_.snapshot_path);
 
-	std::vector<std::string> peers;
+	std::vector<raft::node::peer_info> peer_infos;
 	for (size_t i = 0; i < cfg_.peer_addrs.size(); i++)
 	{
-		peers.push_back(cfg_.peer_addrs[i].id);
+        raft::node::peer_info _peer_info;
+        _peer_info.peer_id_ = cfg_.peer_addrs[i].id;
+        _peer_info.addr_    = cfg_.peer_addrs[i].addr;
+
+        peer_infos.push_back(_peer_info);
 	}
-	node_->set_peers(peers);
+	node_->set_peers(peer_infos);
 
 	//load snapshot 
 	node_->set_load_snapshot_callback(load_snapshot_callback_);

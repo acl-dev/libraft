@@ -1,9 +1,20 @@
 #pragma once
 namespace raft
-
 {
-	
-	struct version;
+    /**
+     * current node status version.
+     * term is raft term.
+     * log_index the log index.1 is the first log.
+     * snapshot will take this version in the file.
+     */
+    struct version
+    {
+        explicit version(log_index_t index = 0, term_t term = 0):
+                index_(index),term_(term){}
+
+        log_index_t index_;
+        term_t term_;
+    };
 
 	/**
 	 * \brief write a version abj to file
@@ -23,14 +34,7 @@ namespace raft
 	 */
 	bool read(acl::istream &file, version &ver);
 
-	struct version
-	{
-		explicit version(log_index_t index = 0, term_t term = 0):
-			index_(index),term_(term){}
 
-		log_index_t index_;
-		term_t term_;
-	};
 
 	bool operator <(const version& left, const version& right);
 
@@ -51,6 +55,11 @@ namespace raft
 	};
 
 
+    /**
+     * replicate_callback is handle to node when replicate data.
+     * if replicate done or error.it's operator() function will be invoked.
+     * and user should to apply the request to state machine
+     */
 	struct replicate_callback
 	{
 		enum status_t
@@ -60,6 +69,13 @@ namespace raft
 			E_ERROR,
 		};
 		virtual ~replicate_callback(){}
+        /**
+         * callback function .when node replicate done or error.
+         * @param status replicate status
+         * @param ver current node status version.keep it .
+         * @return return true.if user apply data ok.
+         * return user apply data error
+         */
 		virtual bool operator()(status_t status, version ver) = 0;
 	};
 
@@ -161,6 +177,8 @@ namespace raft
          * @return return log index
          */
         log_index_t applied_index();
+
+
         /**
          * update applied index status.
          * @param index index of log
@@ -181,12 +199,36 @@ namespace raft
 		 */
 		std::string leader_id();
 
+        /**
+		 * \brief return this node 's id
+		 * \return this node 's id .
+		 */
+        std::string node_id()const;
 
+        /**
+         * \brief reload node log. metadata.
+         * \return return true if reload ok.return if reload failed.
+         */
+        bool reload();
+
+        /**
+         * start raft node.before invoke start.
+         * U need to set node config done.
+         */
+        void start();
+
+        ///raft config interface
+    public:
+        struct peer_info
+        {
+            std::string peer_id_;
+            std::string addr_;
+        };
 		/**
 		 * \brief set peer id for this node
 		 * \param peers peer id vector 
 		 */
-		void set_peers(const std::vector<std::string> &peers);
+		void set_peers(const std::vector<peer_info> &peer_infos_);
 		/**
 		 * \brief give snapshot_callback handle to node .
 		 * when leader send a snapshot file to this node .it will be invoke to user
@@ -233,7 +275,7 @@ namespace raft
 		/**
 		 * \brief set path to store meta data file.
 		 * \param path if path is empty,it will store data file 
-		 * in "./metadata/"
+		 * in "metadata/"
 		 */
 		void set_metadata_path(const std::string &path);
 
@@ -255,21 +297,15 @@ namespace raft
 		 */
 		void set_max_log_count(size_t count);
 
-
-		/**
-		 * \brief return this node 's id
-		 * \return this node 's id .
-		 */
-		std::string node_id()const;
-
-
         /**
          * set node id.
          * @param id node id.unique in the cluster
          */
         void set_node_id(const std::string &id);
+		///raft rpc interface///
+	public:
 		/**
-		* \brief this interface should regist to server to process vote 
+		* \brief this interface should regist to server to process vote
 		* request  from other candidate
 		* \param req vote_request req
 		* \param resp vote_response resp
@@ -306,17 +342,6 @@ namespace raft
 		bool handle_install_snapshot_request(
 				const install_snapshot_request &req,
 				install_snapshot_response &resp);
-
-        /**
-         * reload node log. metadata.
-         */
-        void reload();
-        /**
-         * start raft node.before invoke start.
-         * U need to set node config done.
-         */
-        void start();
-
     private:
 		enum role_t
 		{
@@ -368,6 +393,9 @@ namespace raft
 
 		void set_vote_for(const std::string &vote_for);
 
+        bool log_ok();
+
+        void set_log_ok(bool ok);
 
 		bool build_replicate_log_request(
 			replicate_log_entries_request &request,
@@ -449,13 +477,14 @@ namespace raft
 
 		void make_log_entry(const std::string &data, log_entry &entry);
 
-		bool write_log(const std::string &data, 
-			log_index_t &index, term_t &term);
+		bool write_log(const std::string &data, log_index_t &index, term_t &term);
 
 		void add_replicate_callback(const version& version, 
 									replicate_callback* callback);
 
 		void update_peers_match_index(log_index_t index);
+
+        void init_peers();
 	private:
 		/**
 		 * \brief apply log thread
@@ -525,6 +554,8 @@ namespace raft
 		std::string node_id_;
 		std::string leader_id_;
 		std::string vote_for_;
+        bool        log_ok_;
+        std::vector<peer_info> peer_infos_;
 		acl::locker	metadata_locker_;
 
 
