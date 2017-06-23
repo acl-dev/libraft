@@ -4,9 +4,11 @@
 #to build it
 
 cd protos/
+#remove old protoc genarate files.
+rm raft.pb.*
 ./gen_proto.sh
 cd ../
-#rm -rf ./build
+rm -rf ./build
 mkdir build
 cd build
 if [ -n $1 ]
