@@ -267,7 +267,7 @@ namespace raft
 
             gettimeofday(&last_heartbeat_time_, NULL);
 
-            logger_debug(PEER_SECTION, 2,
+            logger_debug(PEER_SECTION, 10,
                          "term(%lu) "
                          "prev_log_term(%lu) "
                          "prev_log_index(%lu)",
@@ -326,7 +326,7 @@ namespace raft
             {
                 logger_debug(PEER_SECTION, 10,
                              "next_index_(%llu) "
-                                     "last_log_index(%llu).break",
+                             "last_log_index(%llu).break",
                              next_index_,
                              node_.last_log_index());
                 break;
@@ -414,7 +414,9 @@ namespace raft
             */
             if (status == ACL_ETIMEDOUT)
 			{
-				logger_debug(PEER_SECTION, 5, "time to send heartbeat msg");
+				logger_debug(PEER_SECTION, 10,
+                             "time to send heartbeat msg");
+
 				SET_TO_REPLICATE(event_);
 			}
         } else
@@ -422,8 +424,8 @@ namespace raft
             //node is not leader.wait without timeout
             acl_pthread_cond_wait(&cond_,&mutex_);
         }
-        logger_debug(PEER_SECTION, 10, "event_:%d", event_);
-		event = event_;
+        logger_debug(PEER_SECTION, 15, "event_:%d", event_);
+        event = event_;
         event_ = 0;
 		acl_pthread_mutex_unlock(&mutex_);
 

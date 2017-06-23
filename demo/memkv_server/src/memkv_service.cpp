@@ -69,12 +69,14 @@ public:
 	}
 	bool operator()(status_t status, raft::version ver)
 	{
+        acl_pthread_mutex_lock(&mutex_);
 		done_ = true;
 		status_ = status;
 		ver_ = ver;
 		//notify .replicate done or error
 		acl_pthread_cond_signal(&cond_);
-		return true;
+        acl_pthread_mutex_unlock(&mutex_);
+        return true;
 	}
 	//wait for replicate dong or error
 	void wait()
@@ -169,14 +171,24 @@ memkv_service::memkv_service(acl::http_rpc_server &server)
 	apply_callback_ = new memkv_apply_callback(this);
 	node_ = new raft::node;
 	cfg_file_path_ = var_cfg_raft_config;
+    writes_ = 0;
+    last_writes_ = 0;
+    print_status_ = new print_status;
+    print_status_->is_stop_ = false;
+    print_status_->memkv_service_ = this;
+    print_status_->start();
 }
 
 memkv_service::~memkv_service()
 {
+    print_status_->is_stop_ = true;
+    print_status_->wait();
+
 	delete node_;
 	delete load_snapshot_callback_;
 	delete make_snapshot_callback_;
 	delete apply_callback_;
+    delete print_status_;
 }
 
 void memkv_service::init()
@@ -548,11 +560,18 @@ bool memkv_service::set(const set_req &req, set_resp &resp)
 	}
 	// status ok .set key to store
 	acl::lock_guard lg(mem_store_locker_);
-
+    writes_ ++;
 	store_[req.key] = store_[req.value];
 	curr_ver_ = ver;
 
 	return true;
+}
+
+void memkv_service::do_print_status()
+{
+    size_t diff = writes_ - last_writes_;
+    logger("writes/second (%lu)", diff);
+    last_writes_ = writes_;
 }
 bool memkv_service::del(const del_req &req, del_resp &resp)
 {

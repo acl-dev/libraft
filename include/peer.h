@@ -70,7 +70,7 @@ namespace raft
 		bool wait_event(int &event);
 
 		/**
-		 * \brief thread runtine
+		 * \brief thread routine
 		 * \return 
 		 */
 		virtual void* run();

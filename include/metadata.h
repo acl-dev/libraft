@@ -59,6 +59,8 @@ namespace raft
 		
 		bool load_current_term();
 
+        bool load_peer_info();
+
 		bool reload();
 
 		bool open(const std::string &file_path, bool create);

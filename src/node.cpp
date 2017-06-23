@@ -965,8 +965,10 @@ namespace raft
         {
             set_election_timer();
             std::string vote = vote_for().c_str();
-            logger("vote_for(%s) is not empty. return",
-                   vote.c_str());
+            logger("vote_for(%s) is not empty. return", vote.c_str());
+
+            ///Give a chance to communicate to each other
+            set_current_term(current_term() + 1);
             return;
         }
 
