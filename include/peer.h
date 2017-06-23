@@ -22,7 +22,9 @@ namespace raft
          * @param peer_id node id of peer
          * @param addr address of peer
          */
-		peer(node &_node, const std::string &peer_id, const std::string &addr);
+		peer(node &_node,
+             const std::string &peer_id,
+             const std::string &addr);
 
 		~peer();
 

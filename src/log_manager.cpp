@@ -121,7 +121,7 @@ namespace raft
 	bool log_manager::read(log_index_t index, 
 		int max_bytes, 
 		int max_count, 
-		std::vector<log_entry> &entries)
+		std::vector<log_entry*> &entries)
 	{
 		int bytes = 0;
 		log_index_t begin = index;

@@ -24,7 +24,7 @@ namespace raft
 		virtual bool read(log_index_t index,
 			int max_bytes,
 			int max_count,
-			std::vector<log_entry> &entries,
+			std::vector<log_entry*> &entries,
 			int &bytes);
 
 		virtual bool eof();

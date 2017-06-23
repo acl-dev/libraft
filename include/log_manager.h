@@ -20,7 +20,7 @@ namespace raft
 		log_index_t write(const log_entry &entry);
 		
 		bool read(log_index_t index, int max_bytes,int max_count,
-			std::vector<log_entry> &entries);
+			std::vector<log_entry*> &entries);
 
 		bool read(log_index_t index, log_entry &entry);
 		
