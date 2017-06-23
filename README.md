@@ -19,7 +19,7 @@ make build_one
 ```
 * build http_rpc
 ```bash
-git clone https://https://github.com/acl-dev/microservice.git
+git clone https://github.com/acl-dev/microservice.git
 cd microservice/
 mkdir build
 cd build/
