@@ -9,7 +9,7 @@ namespace raft
 		 * \param last_index last log index 
 		 * \param file_size max file size.min is 64K
 		 */
-		explicit mmap_log(log_index_t last_index, int file_size);
+		explicit mmap_log(log_index_t last_index, size_t file_size);
 
         ~mmap_log();
 

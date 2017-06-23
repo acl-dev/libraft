@@ -206,7 +206,7 @@ void memkv_service::load_config()
 	acl::ifstream file;
 	if (!file.open_read(cfg_file_path_.c_str()))
 	{
-		logger_fatal("create_new_file config file error."
+		logger_fatal("open_read config file error."
 			         "cfg_file_path_:%s "
 			         "error:%s",
 			          cfg_file_path_.c_str(),
@@ -335,7 +335,7 @@ bool memkv_service::load_snapshot(const std::string &file_path)
 	acl::ifstream file;
 	if (!file.open_read(file_path.c_str()))
 	{
-		logger_error("create_new_file file error");
+		logger_error("open_read file error");
 		return false;
 	}
 	raft::version ver;
@@ -407,7 +407,7 @@ bool memkv_service::make_snapshot(const std::string &path,
 	acl::ofstream file;
 	if (!file.open_trunc(snapshot_path.c_str()))
 	{
-		logger_error("create_new_file file error.%s",
+		logger_error("open_trunc file error.%s",
                      snapshot_path.c_str());
 
 		return false;

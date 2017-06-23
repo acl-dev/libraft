@@ -59,6 +59,7 @@ private:
                 memkv_service_->do_print_status();
                 acl_doze(1000);
             }while(!is_stop_);
+            return NULL;
         }
         bool is_stop_;
         memkv_service *memkv_service_;

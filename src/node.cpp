@@ -852,7 +852,7 @@ namespace raft
         acl::ifstream	file;
         if (!file.open_read(snapshot.c_str()))
         {
-            logger_fatal("create_new_file file,error,%s",
+            logger_fatal("open file,error,%s",
                          snapshot.c_str());
             return;
         }
@@ -1386,7 +1386,7 @@ namespace raft
 
             if (!snapshot_tmp_->open_trunc(file_path))
             {
-                logger_error("create_new_file filename error,"
+                logger_error("open_trunc filename error,"
                              "file_path:%s,%s",
                              file_path.c_str(),
                              acl::last_serror());

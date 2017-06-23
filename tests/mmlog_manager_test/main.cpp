@@ -9,11 +9,9 @@ log_manager *log_manager_;
 
 void create_log_manger()
 {
-    mkdir("mmap_log_manger_test",S_IRWXU|S_IRGRP|S_IXGRP|S_IROTH);
+//    mkdir("mmap_log_manger_test",S_IRWXU|S_IRGRP|S_IXGRP|S_IROTH);
 	log_manager_ = 
 		new mmap_log_manager("mmap_log_manger_test/");
-
-    log_manager_->reload_logs();
 }
 void close_log_manager()
 {
@@ -107,11 +105,15 @@ int main()
 	create_log_manger();
 
 	// reload log
-	log_manager_->reload_logs();
+    if (!log_manager_->reload_logs())
+    {
+        logger_error("reload log error");
+        return 1;
+    }
 
 	//write
 	int start = log_manager_->last_index() + 1;
-	int end = start + 10000;
+	int end = start + 1000000;
 	write(start, end);
 
 

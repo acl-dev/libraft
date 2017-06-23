@@ -119,7 +119,8 @@ namespace raft
 		do
 		{
 			//check if reach end of file.
-			if (write_pos_ - buf_ >= max_buffer_size_)
+            size_t diff = write_pos_ - buf_;
+			if (diff >= max_buffer_size_)
             {
                 logger("read end of file.reload ok");
                 return true;
@@ -179,7 +180,9 @@ namespace raft
 				break;
 			}
 		} while (true);
+        return true;
 	}
+
 
     void metadata::print_status()
     {
@@ -318,7 +321,7 @@ namespace raft
 	{
         if(write_pos_ == NULL)
         {
-            logger_error("metadata not create_new_file");
+            logger_error("metadata not open");
             return false;
         }
 
@@ -326,7 +329,8 @@ namespace raft
         if((write_pos_ - buf_) == max_buffer_size_ )
             return false;
 
-         acl_assert((write_pos_ - buf_) < max_buffer_size_);
+        size_t diff = write_pos_ - buf_;
+         acl_assert(diff < max_buffer_size_);
 
         size_t remain = max_buffer_size_ -(write_pos_ - buf_);
 
@@ -445,7 +449,7 @@ namespace raft
     {
         acl::lock_guard lg(locker_);
 
-        unsigned int len = sizeof(int);
+        size_t len = sizeof(int);
 
         for (size_t i = 0; i < infos.size(); ++i)
         {
@@ -515,7 +519,7 @@ namespace raft
 			return false;
 		}
 
-		//create_new_file mmap
+		//open mmap
 		write_pos_ = buf_ = 
 			static_cast<unsigned char *>(open_mmap(fd, size));
 		

@@ -11,7 +11,7 @@
 namespace raft
 {
 
-    mmap_log::mmap_log(log_index_t last_index, int file_size)
+    mmap_log::mmap_log(log_index_t last_index, size_t file_size)
     {
         data_buf_size_ = 0;
         index_buf_size_ = 0;
@@ -48,16 +48,16 @@ namespace raft
         }
 
 
-        //create_new_file file
+        //open file
         ACL_FILE_HANDLE fd = acl_file_open(
             filepath.c_str(),
             O_RDWR | O_CREAT,
             0600);
 
-        //create_new_file file error
+        //open file error
         if (fd == ACL_FILE_INVALID)
         {
-            logger_error("create_new_file %s error %s\r\n",
+            logger_error("open %s error %s\r\n",
                          filepath.c_str(),
                          acl_last_serror());
             return false;
@@ -84,7 +84,7 @@ namespace raft
         //and it name:log file name + ".index"
         index_filepath_ = filepath + __INDEX__EXT__;
 
-        //create_new_file index file
+        //open index file
         file_size = acl_file_size(index_filepath_.c_str());
 
         //file exist
@@ -93,14 +93,14 @@ namespace raft
             index_buf_size_ = (size_t)file_size;
         }
 
-        //create_new_file index file
+        //open index file
         fd = acl_file_open(index_filepath_.c_str(),
                            O_RDWR | O_CREAT,
                            0600);
-        //create_new_file file error
+        //open file error
         if (fd == ACL_FILE_INVALID)
         {
-            logger_error("create_new_file %s error %s\r\n",
+            logger_error("open %s error %s\r\n",
                          index_filepath_.c_str(), acl_last_serror());
 
             close_mmap(data_buf_, data_buf_size_);
@@ -174,7 +174,7 @@ namespace raft
         acl::lock_guard lg(write_locker_);
 
         //write buffer offset
-        unsigned long offset = data_wbuf_ - data_buf_;
+        size_t offset = data_wbuf_ - data_buf_;
         //write remain
         acl_assert(offset < data_buf_size_);
         size_t remain_len = data_buf_size_ - offset;
@@ -246,7 +246,7 @@ namespace raft
 
         if (!is_open_)
         {
-            logger("mmap log not create_new_file");
+            logger("mmap log not open");
             return false;
         }
 
@@ -350,7 +350,7 @@ namespace raft
     {
         if (!is_open_)
         {
-            logger("mmap log not create_new_file");
+            logger("mmap log not open");
             return false;
         }
 
@@ -618,7 +618,7 @@ namespace raft
 
         if (!_log->open(filepath))
         {
-            logger_error("mmap_log create_new_file error,%s",
+            logger_error("mmap_log open error,%s",
                          filepath.c_str());
             _log->dec_ref();
             return NULL;
