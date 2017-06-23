@@ -20,16 +20,16 @@ void close_log_manager()
 }
 
 char buffer[64];
-char *to_string(int value)
+char *to_string(log_index_t  value)
 {
 	memset(buffer, 0, sizeof(buffer));
-	sprintf(buffer, "%d", value);
+	sprintf(buffer, "%llu", value);
 	return  buffer;
 }
-void write(int begin, int end)
+void write(log_index_t begin,log_index_t  end)
 {
 	//write
-	for (int i = begin; i < end; i++)
+	for (log_index_t  i = begin; i < end; i++)
 	{
 		log_entry entry;
 		entry.set_term(1);
@@ -54,11 +54,11 @@ void read(int start, int end)
 
 void read_all()
 {
-	std::vector<log_entry> entries;
+	std::vector<log_entry*> entries;
 	log_manager_->read(log_manager_->start_index(),
-		1024 * 1024 * 1024, 
-		log_manager_->last_index(), 
-		entries);
+                       1024 * 1024 * 1024,
+                       (int) log_manager_->last_index(),
+                       entries);
 
 	std::cout << 
 		"all log entries count:"<<
@@ -69,16 +69,20 @@ void read_all()
 	{
 		if (!pre_index)
 		{
-			pre_index = entries[i].index();
+			pre_index = entries[i]->index();
 		}
 		else
 		{
-			acl_assert(pre_index == entries[i].index() - 1);
+			acl_assert(pre_index == entries[i]->index() - 1);
 		}
 		/*std::cout << entries[i].log_data().substr(1000) << std::endl;*/
 
-		pre_index = entries[i].index();
+		pre_index = entries[i]->index();
 	}
+    for (size_t j = 0; j < entries.size(); ++j)
+    {
+        delete entries[j];
+    }
 }
 void discard()
 {
@@ -112,8 +116,8 @@ int main()
     }
 
 	//write
-	int start = log_manager_->last_index() + 1;
-	int end = start + 1000000;
+	log_index_t start = log_manager_->last_index() + 1;
+	log_index_t end   = start + 1000000;
 	write(start, end);
 
 

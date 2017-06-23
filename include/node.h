@@ -365,7 +365,8 @@ namespace raft
 		bool handle_install_snapshot_request(
 				const install_snapshot_request &req,
 				install_snapshot_response &resp);
-    private:
+
+    protected:
 		enum role_t
 		{
 			E_LEADER,//leader

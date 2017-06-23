@@ -13,7 +13,7 @@ mkdir build
 cd build
 if [ -n $1 ]
 then
-    ACL_DEV=/home/skyinno/code
+    ACL_DEV=/home/akzi/code/acl-dev/
 else
     ACL_DEV=$1
 fi
@@ -32,21 +32,57 @@ cd bin
 mkdir -p 11081/log 11081/metadata 11081/snapshot
 mkdir -p 11082/log 11082/metadata 11082/snapshot
 
-cp ../../demo/memkv_server/raft_config.json 11081/
-cp ../../demo/memkv_server/raft_config.json 11082/
 
 cp memkv_server 11081
 cp memkv_server 11082
 
+echo "{">>11081/raft_config.json
+echo "	\"log_path\": \"log/\",">>11081/raft_config.json
+echo "	\"snapshot_path\":\"snapshot/\",">>11081/raft_config.json
+echo "	\"metadata_path\":\"metadata/\",">>11081/raft_config.json
+echo "	\"max_log_size\": 1024,"   >>11081/raft_config.json
+echo "	\"max_log_count\": 6,"     >>11081/raft_config.json
+echo "	\"peer_addrs\": [" >>11081/raft_config.json
+echo "		{">>11081/raft_config.json
+echo "			\"addr\": \"127.0.0.1:11082\",">>11081/raft_config.json
+echo "			\"id\"  :\"11082\"">>11081/raft_config.json
+echo "	 	}">>11081/raft_config.json
+echo "	],">>11081/raft_config.json
+echo "	\"node_addr\": {">>11081/raft_config.json
+echo "	\"addr\":\"127.0.0.1:11081\",">>11081/raft_config.json
+echo "	\"id\": \"11081\"">>11081/raft_config.json
+echo "	}">>11081/raft_config.json
+echo "}">>11081/raft_config.json
 
-echo "#!/bin/bash" > 11082/run.sh
-echo "cp ../memkv_server ." > 11082/run.sh
-echo "./memkv_server alone 11082" > 11082/run.sh
+
+echo "{">>11082/raft_config.json
+echo "	\"log_path\": \"log/\",">>11082/raft_config.json
+echo "	\"snapshot_path\":\"snapshot/\",">>11082/raft_config.json
+echo "	\"metadata_path\":\"metadata/\",">>11082/raft_config.json
+echo "	\"max_log_size\": 1024,"   >>11082/raft_config.json
+echo "	\"max_log_count\": 6,"     >>11082/raft_config.json
+echo "	\"peer_addrs\": [" >>11082/raft_config.json
+echo "		{">>11082/raft_config.json
+echo "			\"addr\": \"127.0.0.1:11081\",">>11082/raft_config.json
+echo "			\"id\"  :\"11081\"">>11082/raft_config.json
+echo "   	}">>11082/raft_config.json
+echo "	],">>11082/raft_config.json
+echo "	\"node_addr\": {">>11082/raft_config.json
+echo "	\"addr\":\"127.0.0.1:11082\",">>11082/raft_config.json
+echo "	\"id\": \"11082\"">>11082/raft_config.json
+echo "	}">>11082/raft_config.json
+echo "}">>11082/raft_config.json
+
+
+
+echo "#!/bin/bash" >> 11082/run.sh
+echo "cp ../memkv_server ." >> 11082/run.sh
+echo "./memkv_server alone 11082" >> 11082/run.sh
 chmod u+x 11082/run.sh
 
-echo "#!/bin/bash" > 11081/run.sh
-echo "cp ../memkv_server ." > 11081/run.sh
-echo "./memkv_server alone" > 11081/run.sh
+echo "#!/bin/bash" >> 11081/run.sh
+echo "cp ../memkv_server ." >> 11081/run.sh
+echo "./memkv_server alone" >> 11081/run.sh
 chmod u+x 11081/run.sh
 
 echo "ok!"

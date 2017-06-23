@@ -18,7 +18,9 @@
 namespace raft
 {
 
-	peer::peer(node &_node, const std::string &peer_id, const std::string &addr)
+	peer::peer(node &_node,
+               const std::string &peer_id,
+               const std::string &addr)
 		:node_(_node),
          peer_id_(peer_id),
          match_index_(0),
@@ -234,7 +236,8 @@ namespace raft
 	 *If AppendEntries fails because of log inconsistency:
 	 *decrement nextIndex and retry (��5.3)
 	 */
-	void peer::do_replicate()
+
+    void peer::do_replicate()
 	{
 		int entry_size = 1;
 
@@ -280,10 +283,9 @@ namespace raft
 			//for next heartbeat time;
 
 
-			status = rpc_client_.pb_call(
-				replicate_service_path_,
-				req,
-				resp);
+			status = rpc_client_.pb_call(replicate_service_path_,
+                                         req,
+                                         resp);
 
 			if (!status)
 			{

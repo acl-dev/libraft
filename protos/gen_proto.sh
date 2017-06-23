@@ -26,7 +26,7 @@ do
 	if [ $ext = "cc" ]
 	then
 		cp $file ../src/proto_gen/
-        cp $file
+        rm $file
 	fi
 	if [ $ext = "h" ]
 	then

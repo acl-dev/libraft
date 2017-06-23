@@ -272,7 +272,7 @@ namespace raft
 			pos = file_path.find_last_of('\\');
 
 		if (pos != std::string::npos)
-			file_name = file_name.substr(pos + 1);
+			file_name = file_path.substr(pos + 1);
 		else
 			file_name = file_path;
 

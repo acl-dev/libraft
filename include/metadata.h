@@ -13,7 +13,7 @@ namespace raft
          * (it will auto delete old file).if max_file_size too big
          * it will take too long time to reload metadata.
          */
-		metadata(size_t max_file_size = 10*1024*1024);
+		metadata(size_t max_file_size = 8*1024*1024);
 
         ~metadata ();
 

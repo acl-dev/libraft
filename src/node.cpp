@@ -450,7 +450,7 @@ namespace raft
                 request.set_prev_log_index(0);
                 request.set_prev_log_term(0);
 
-                //copy? c++11 it replace move.
+                //copy one entry
                 *request.add_entries() = entry;
                 // read log ok
                 return true;
@@ -458,26 +458,30 @@ namespace raft
         }
         else if (index <= last_log_index())
         {
-            std::vector<log_entry> entries;
+            std::vector<log_entry*> entries;
+            log_entry* pre_entry;
             //index -1 for prev_log_term, set_prev_log_index
-            if (log_manager_->read(index - 1, __10MB__,
-                                   entry_size, entries))
+            if (log_manager_->read(index - 1,
+                                   __10MB__,
+                                   entry_size,
+                                   entries))
             {
+                pre_entry = entries[0];
 
-                request.set_prev_log_index(entries[0].index());
-                request.set_prev_log_term(entries[0].term());
+                request.set_prev_log_index(pre_entry->index());
+                request.set_prev_log_term(pre_entry->term());
 
                 logger_debug(NODE_SECTION, 10,
                              "pre_log_index(%lu) "
                              "pre_log_term(%lu) ",
-                             entries[0].index(),
-                             entries[0].term());
+                             pre_entry->index(),
+                             pre_entry->term());
 
+                delete pre_entry;
                 //first one is prev log
                 for (size_t i = 1; i < entries.size(); i++)
                 {
-                    //copy
-                    *request.add_entries() = entries[i];
+                    request.mutable_entries()->AddAllocated(entries[i]);
                 }
                 // read log ok
                 return true;
@@ -632,8 +636,8 @@ namespace raft
         vote_responses_locker_.lock();
 
         vote_responses_[peer_id] = response;
-        std::map<std::string, vote_response>
-            ::iterator it = vote_responses_.begin();
+        std::map<std::string, vote_response>::iterator
+                it = vote_responses_.begin();
 
         for (; it != vote_responses_.end(); ++it)
         {

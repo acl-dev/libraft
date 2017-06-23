@@ -35,11 +35,11 @@ namespace raft
             close();
     }
 
-    bool mmap_log::open(const std::string &filepath)
+    bool mmap_log::open(const std::string &file_path)
     {
-        data_filepath_ = filepath;
+        data_filepath_ = file_path;
 
-        acl_int64 file_size = acl_file_size(filepath.c_str());
+        acl_int64 file_size = acl_file_size(file_path.c_str());
 
         //file exist
         if (file_size > 0)
@@ -50,7 +50,7 @@ namespace raft
 
         //open file
         ACL_FILE_HANDLE fd = acl_file_open(
-            filepath.c_str(),
+            file_path.c_str(),
             O_RDWR | O_CREAT,
             0600);
 
@@ -58,7 +58,7 @@ namespace raft
         if (fd == ACL_FILE_INVALID)
         {
             logger_error("open %s error %s\r\n",
-                         filepath.c_str(),
+                         file_path.c_str(),
                          acl_last_serror());
             return false;
         }
@@ -71,7 +71,7 @@ namespace raft
         if (!data_buf_)
         {
             logger_error("open_mmap %s error %s\r\n",
-                         filepath.c_str(),
+                         file_path.c_str(),
                          acl_last_serror());
 
             acl_file_close(fd);
@@ -82,7 +82,7 @@ namespace raft
 
         //index file store log index in it. 
         //and it name:log file name + ".index"
-        index_filepath_ = filepath + __INDEX__EXT__;
+        index_filepath_ = file_path + __INDEX__EXT__;
 
         //open index file
         file_size = acl_file_size(index_filepath_.c_str());
@@ -179,8 +179,14 @@ namespace raft
         acl_assert(offset < data_buf_size_);
         size_t remain_len = data_buf_size_ - offset;
 
+        //next index
+        log_index_t index = last_index_ + 1;
+
+        log_entry &entry2 = const_cast<log_entry &>(entry);
+        //set log index to it
+        entry2.set_index(index);
         //entry size
-        size_t len = entry.ByteSizeLong();
+        size_t len = entry2.ByteSizeLong();
 
         //for store the entry size
         len += sizeof(int);
@@ -197,9 +203,6 @@ namespace raft
         //it will crash!!!!
         len += sizeof(int);
 
-        //next index
-        log_index_t index = last_index_ + 1;
-
         //check remain buffer ok
         if (remain_len < len)
         {
@@ -208,11 +211,6 @@ namespace raft
             //write failed. return 0
             return 0;
         }
-
-        log_entry &entry2 = const_cast<log_entry &>(entry);
-        //set log index to it
-        entry2.set_index(index);
-
 
         put_uint32(data_wbuf_, __MAGIC_START__);
         put_message(data_wbuf_, entry2);
@@ -292,7 +290,7 @@ namespace raft
     bool mmap_log::read(log_index_t index,
                         int max_bytes,
                         int max_count,
-                        std::vector<log_entry> &entries,
+                        std::vector<log_entry*> &entries,
                         int &bytes)
     {
         if (max_bytes <= 0 || max_count <= 0)
@@ -320,27 +318,35 @@ namespace raft
 
         while (true)
         {
-            log_entry entry;
+            log_entry *entry = new log_entry;
 
-            size_t remian = data_buf_size_ - (buffer - data_buf_);
+            size_t remain = data_buf_size_ - (buffer - data_buf_);
 
             //reach the of file
-            if (remian < sizeof(unsigned int))
+            if (remain < sizeof(unsigned int))
+            {
+                delete entry;
                 break;
+            }
 
-            if (!get_entry(buffer, entry))
+
+            if (!get_entry(buffer, *entry))
+            {
+                delete entry;
                 break;
+            }
+
             entries.push_back(entry);
 
-            bytes += static_cast<int>(entry.ByteSizeLong());
+            bytes += static_cast<int>(entry->ByteSizeLong());
 
-            max_bytes -= static_cast<int>(entry.ByteSizeLong());
+            max_bytes -= static_cast<int>(entry->ByteSizeLong());
             --max_count;
 
             if (max_bytes <= 0 || max_count <= 0)
                 break;
             //read the last one
-            if (entry.index() == last_index())
+            if (entry->index() == last_index())
                 break;;
         }
         return entries.size() != 0;

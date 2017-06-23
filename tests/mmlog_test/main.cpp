@@ -24,9 +24,13 @@ void test_read(raft::mmap_log &log)
 
 	acl_assert(log.last_index() == count - 1);
 
-	std::vector<log_entry> entries;
+	std::vector<log_entry*> entries;
 	int bytes = 0;
 	log.read(1, 1000000, 100000, entries, bytes);
+    for (size_t j = 0; j < entries.size(); ++j)
+    {
+        delete entries[j];
+    }
 
 	acl_assert(entries.size() == 999);
 
