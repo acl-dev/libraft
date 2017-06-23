@@ -302,7 +302,11 @@ void memkv_service::reload()
             logger_fatal("load_snapshot error");
     }
     raft::log_index_t committed_index = node_->committed_index();
-    acl_assert(curr_ver_.index_ <= committed_index);
+    if(curr_ver_.index_ > committed_index)
+        logger_fatal("curr_ver_.index_(%llu) "
+                             "committed_index(%llu)",
+                     curr_ver_.index_,
+                     committed_index );
     do
     {
         if(curr_ver_.index_ == committed_index)

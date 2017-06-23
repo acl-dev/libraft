@@ -1,4 +1,5 @@
 #include<string>
+#include <cstdlib>
 #include "raft.hpp"
 
 #define __METADATA_EXT__ ".meta"
@@ -85,27 +86,36 @@ namespace raft
 			logger_error("create metadata file error");
 			return false;
 		}
-			
+        std::map<size_t, std::string> metafile;
 
-		for (std::set<std::string>::reverse_iterator it = 
-			files.rbegin();it != files.rend(); ++it)
+        for (std::set<std::string>::reverse_iterator it =files.rbegin();
+             it != files.rend(); ++it)
+        {
+            logger("--> %s", it->c_str());
+            std::string tmp = get_filename(*it);
+            metafile.insert(std::make_pair(atoll(tmp.c_str()), *it));
+        }
+
+		for (std::map<size_t, std::string>::reverse_iterator
+                     it = metafile.rbegin();it != metafile.rend();++it)
 		{
 			//reload the new metadata file.
 			//the new one in the files last one.
-			if (!open(*it, false))
+			if (!open(it->second, false))
 			{
 				logger_error("open file error. "
 							 "file_path(%s)",
-							 it->c_str());
+							 it->second.c_str());
 				continue;
 			}
 			if (reload())
 			{
-                file_index_ = (size_t) atoll(it->c_str());
+                file_index_ = it->first;
+                file_path_ = it->second;
                 logger("reload_file ok."
                        "file_index(%lu) file_path(%s)",
                        file_index_,
-                       it->c_str());
+                       it->second.c_str());
 				return true;
 			}
 		}
@@ -309,7 +319,8 @@ namespace raft
         //delete old file from disk
         if(remove(file_path_.c_str()) != 0)
         {
-            logger_error("remove old metadata file error.%s",
+            logger_error("remove old metadata file(%s) error.%s",
+                         file_path_.c_str(),
                          acl::last_serror());
         }
         file_path_ = file_path;
