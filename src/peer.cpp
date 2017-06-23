@@ -18,7 +18,7 @@
 namespace raft
 {
 
-	peer::peer(node &_node, const std::string &peer_id)
+	peer::peer(node &_node, const std::string &peer_id, const std::string &addr)
 		:node_(_node),
          peer_id_(peer_id),
          match_index_(0),
@@ -33,11 +33,18 @@ namespace raft
 		replicate_service_path_.format(
 			"/memkv%s/raft/replicate_log_req", peer_id_.c_str());
 
+
 		install_snapshot_service_path_.format(
 			"/memkv%s/raft/install_snapshot_req", peer_id_.c_str());
 
-		election_service_path_.format(
-			"/memkv%s/raft/vote_req", peer_id_.c_str());
+
+        election_service_path_.format(
+                "/memkv%s/raft/vote_req", peer_id_.c_str());
+
+        //init rpc_client;
+        rpc_client_.add_service(addr.c_str(), install_snapshot_service_path_);
+        rpc_client_.add_service(addr.c_str(), replicate_service_path_);
+        rpc_client_.add_service(addr.c_str(), election_service_path_);
 
 		//send heartbeat to sync log index first
 		acl_pthread_mutex_init(&mutex_, NULL);
@@ -45,6 +52,9 @@ namespace raft
 
         //init last_replicate_time_
         gettimeofday(&last_heartbeat_time_, NULL);
+
+        std::vector<std::string> paths;
+
     }
 	peer::~peer()
 	{
@@ -111,7 +121,7 @@ namespace raft
 			{
 				do_election();
 			}
-		} 
+		}
 		return NULL;
 	}
 
@@ -190,7 +200,7 @@ namespace raft
 
 			status_t status = rpc_client_.pb_call(
 				install_snapshot_service_path_,
-				req, 
+				req,
 				resp);
 			if (!status)
 			{
@@ -205,7 +215,7 @@ namespace raft
 				return false;
 			}
 			offset = (long long int) resp.bytes_stored();
-			//done 
+			//done
 			if (offset == file_size)
 			{
 				//update next_index
@@ -218,10 +228,10 @@ namespace raft
 		return false;
 	}
 	/*
-	 *If last log index  nextIndex for a follower: send 
-	 *AppendEntries RPC with log entries starting at nextIndex 
-	 *If successful: update nextIndex and matchIndex for follower (��5.3) 
-	 *If AppendEntries fails because of log inconsistency: 
+	 *If last log index  nextIndex for a follower: send
+	 *AppendEntries RPC with log entries starting at nextIndex
+	 *If successful: update nextIndex and matchIndex for follower (��5.3)
+	 *If AppendEntries fails because of log inconsistency:
 	 *decrement nextIndex and retry (��5.3)
 	 */
 	void peer::do_replicate()
@@ -238,8 +248,8 @@ namespace raft
                          "next_index_(%llu)",
                          next_index_);
 			if (!node_.build_replicate_log_request(
-				req, 
-				next_index_, 
+				req,
+				next_index_,
 				entry_size))
 			{
 				logger_debug(PEER_SECTION, 10,
@@ -257,7 +267,7 @@ namespace raft
 
             gettimeofday(&last_heartbeat_time_, NULL);
 
-            logger_debug(PEER_SECTION, 2,
+            logger_debug(PEER_SECTION, 10,
                          "term(%lu) "
                          "prev_log_term(%lu) "
                          "prev_log_index(%lu)",
@@ -277,7 +287,7 @@ namespace raft
 
 			if (!status)
 			{
-				logger_error("proto_call error.%s", 
+				logger_error("proto_call error.%s",
 					status.error_str_.c_str());
 				rpc_fails_++;
 				break;
@@ -316,13 +326,13 @@ namespace raft
             {
                 logger_debug(PEER_SECTION, 10,
                              "next_index_(%llu) "
-                                     "last_log_index(%llu).break",
+                             "last_log_index(%llu).break",
                              next_index_,
                              node_.last_log_index());
                 break;
             }
 
-		}		
+		}
 	}
 
 	void peer::do_election()
@@ -353,8 +363,8 @@ namespace raft
                      req.term());
 
 		status_t status = rpc_client_.pb_call(
-			election_service_path_, 
-			req, 
+			election_service_path_,
+			req,
 			resp);
 
 		if (!status)
@@ -404,7 +414,9 @@ namespace raft
             */
             if (status == ACL_ETIMEDOUT)
 			{
-				logger_debug(PEER_SECTION, 5, "time to send heartbeat msg");
+				logger_debug(PEER_SECTION, 10,
+                             "time to send heartbeat msg");
+
 				SET_TO_REPLICATE(event_);
 			}
         } else
@@ -412,8 +424,8 @@ namespace raft
             //node is not leader.wait without timeout
             acl_pthread_cond_wait(&cond_,&mutex_);
         }
-        logger_debug(PEER_SECTION, 10, "event_:%d", event_);
-		event = event_;
+        logger_debug(PEER_SECTION, 15, "event_:%d", event_);
+        event = event_;
         event_ = 0;
 		acl_pthread_mutex_unlock(&mutex_);
 

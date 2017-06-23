@@ -22,8 +22,6 @@ private:
 
 	void load_config();
 
-	void init_http_rpc_client();
-
 	void init_raft_node();
 
 	void regist_service();
@@ -49,6 +47,24 @@ private:
 
 	bool del(const del_req &req, del_resp &resp);
 
+    void do_print_status();
+private:
+    struct print_status :public  acl::thread
+    {
+        void *run()
+        {
+            is_stop_ = false;
+            do
+            {
+                memkv_service_->do_print_status();
+                acl_doze(1000);
+            }while(!is_stop_);
+            return NULL;
+        }
+        bool is_stop_;
+        memkv_service *memkv_service_;
+    };
+
     //raft callback handles
     memkv_load_snapshot_callback *load_snapshot_callback_;
     memkv_make_snapshot_callback *make_snapshot_callback_;
@@ -67,4 +83,9 @@ private:
 
 	//config file_path
 	std::string cfg_file_path_;
+
+    size_t writes_;
+    size_t last_writes_;
+
+    print_status *print_status_;
 };

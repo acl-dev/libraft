@@ -16,7 +16,13 @@ namespace raft
 	class peer :private acl::thread
 	{
 	public:
-		peer(node &_node, const std::string &peer_id);
+        /**
+         *
+         * @param _node node object ref
+         * @param peer_id node id of peer
+         * @param addr address of peer
+         */
+		peer(node &_node, const std::string &peer_id, const std::string &addr);
 
 		~peer();
 
@@ -64,7 +70,7 @@ namespace raft
 		bool wait_event(int &event);
 
 		/**
-		 * \brief thread runtine
+		 * \brief thread routine
 		 * \return 
 		 */
 		virtual void* run();

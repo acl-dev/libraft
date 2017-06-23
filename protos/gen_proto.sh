@@ -26,9 +26,11 @@ do
 	if [ $ext = "cc" ]
 	then
 		cp $file ../src/proto_gen/
+        cp $file
 	fi
 	if [ $ext = "h" ]
 	then
 		cp $file ../include/proto_gen/
+        rm $file
 	fi
 done

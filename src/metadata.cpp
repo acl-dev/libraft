@@ -15,6 +15,7 @@
 #define COMMITTED_INDEX 2
 #define VOTE_FOR		3
 #define CURRENT_TERM	4
+#define PEER_INFO       5
 
 #define CURRENT_TERM_LEN    \
 (sizeof(int) * 2 + sizeof(term_t) + sizeof(char))
@@ -43,10 +44,11 @@ namespace raft
 		applied_index_   = 0;
         vote_term_       = 0;
 
-		max_buffer_size_ = max_file_size;
 		write_pos_  = 0;
 		buf_        = 0;
 		file_index_ = 0;
+
+		max_buffer_size_ = max_file_size;
 	}
     metadata::~metadata ()
     {
@@ -92,12 +94,14 @@ namespace raft
 			//the new one in the files last one.
 			if (!open(*it, false))
 			{
-				logger_error("create_new_file file error.");
+				logger_error("open file error. "
+							 "file_path(%s)",
+							 it->c_str());
 				continue;
 			}
 			if (reload())
 			{
-                file_index_ = atoll(it->c_str());
+                file_index_ = (size_t) atoll(it->c_str());
                 logger("reload_file ok."
                        "file_index(%lu) file_path(%s)",
                        file_index_,
@@ -115,7 +119,8 @@ namespace raft
 		do
 		{
 			//check if reach end of file.
-			if (write_pos_ - buf_ >= max_buffer_size_)
+            size_t diff = write_pos_ - buf_;
+			if (diff >= max_buffer_size_)
             {
                 logger("read end of file.reload ok");
                 return true;
@@ -141,45 +146,71 @@ namespace raft
 			{
 				if (load_committed_index())
 					continue;
+                logger_error("load_committed_index error");
 				return false;
 			}
 			case APPLIED_INDEX:
 			{
 				if (load_applied_index())
 					continue;
+                logger_error("load_applied_index error");
 				return false;
 			}
 			case VOTE_FOR:
 			{
 				if (load_vote_for())
 					continue;
+                logger_error("load_vote_for error");
 				return false;
 			}
 			case CURRENT_TERM:
 			{
 				if (load_current_term())
 					continue;
+                logger_error("load_current_term error");
 				return false;
-			}
+			}case PEER_INFO:
+            {
+                if(load_peer_info())
+                    continue;
+                logger_error("load_peer_info error");
+                return false;
+            }
 			default:
 				break;
 			}
 		} while (true);
+        return true;
 	}
+
+
     void metadata::print_status()
     {
+
+        acl::string buffer;
+        for(size_t i = 0; i < peer_infos_.size(); i++)
+        {
+            buffer.format_append("---> [peer_id_(%s)  peer_addr_(%s)]\n",
+                                 peer_infos_[i].peer_id_.c_str(),
+                                 peer_infos_[i].addr_.c_str());
+        }
+
         logger("\n"
                "---> current_term_(%llu) \n"
                "---> applied_index_(%llu) \n"
                "---> committed_index_(%llu) \n"
                "---> vote_for_(%s) \n"
-               "---> vote_term_(%llu) \n",
+               "---> vote_term_(%llu) \n"
+               "%s",
                current_term_,
                applied_index_,
                committed_index_,
                vote_for_.c_str(),
-               vote_term_);
+               vote_term_,
+               buffer.c_str());
+
     }
+
 	bool metadata::load_committed_index()
 	{
 		committed_index_ = get_uint64(write_pos_);
@@ -190,7 +221,8 @@ namespace raft
 		}
 		return true;
 	}
-	bool metadata::load_applied_index()
+
+    bool metadata::load_applied_index()
 	{
 		applied_index_ = get_uint64(write_pos_);
 		if (get_uint32(write_pos_) != __MAGIC_END__)
@@ -211,6 +243,27 @@ namespace raft
 		}
 		return true;
 	}
+
+    bool metadata::load_peer_info()
+    {
+        std::vector<peer_info> infos;
+        unsigned int size = get_uint32(write_pos_);
+        for (unsigned int i = 0; i < size; ++i)
+        {
+            peer_info info;
+            info.peer_id_ = get_string(write_pos_);
+            info.addr_    = get_string(write_pos_);
+            infos.push_back(info);
+        }
+        if (get_uint32(write_pos_) != __MAGIC_END__)
+        {
+            logger_error("metadata broken!!!");
+            return false;
+        }
+        peer_infos_ = infos;
+        return true;
+    }
+
 	bool metadata::load_vote_for()
 	{
 		vote_term_ = get_uint64(write_pos_);
@@ -222,6 +275,7 @@ namespace raft
 		}
 		return true;
 	}
+
     bool metadata::create_new_file ()
     {
         acl::string file_path;
@@ -262,11 +316,12 @@ namespace raft
 
         return true;
     }
+
 	bool metadata::check_remain_buffer(size_t size)
 	{
         if(write_pos_ == NULL)
         {
-            logger_error("metadata not create_new_file");
+            logger_error("metadata not open");
             return false;
         }
 
@@ -274,7 +329,8 @@ namespace raft
         if((write_pos_ - buf_) == max_buffer_size_ )
             return false;
 
-         acl_assert((write_pos_ - buf_) < max_buffer_size_);
+        size_t diff = write_pos_ - buf_;
+         acl_assert(diff < max_buffer_size_);
 
         size_t remain = max_buffer_size_ -(write_pos_ - buf_);
 
@@ -291,6 +347,7 @@ namespace raft
 
         return create_new_file();
 	}
+
 	bool metadata::set_committed_index(log_index_t index)
 	{
 		acl::lock_guard lg(locker_);
@@ -388,6 +445,50 @@ namespace raft
 		return std::make_pair(vote_term_, vote_for_);
 	}
 
+    bool metadata::set_peer_infos(const std::vector<peer_info> &infos)
+    {
+        acl::lock_guard lg(locker_);
+
+        size_t len = sizeof(int);
+
+        for (size_t i = 0; i < infos.size(); ++i)
+        {
+            len += sizeof(unsigned int);
+            len += infos[i].addr_.size();
+
+            len += sizeof(unsigned int);
+            len += infos[i].peer_id_.size();
+        }
+
+        len += sizeof(unsigned int) * 2 + sizeof(char);
+
+        if (!check_remain_buffer(len))
+        {
+            logger_error("write metadata error");
+            return false;
+        }
+
+        put_uint32(write_pos_, __MAGIC_START__);
+        put_uint8(write_pos_, PEER_INFO);
+        //write vector size
+        put_uint32(write_pos_, (unsigned int) infos.size());
+        //write peer_info entry
+        for (size_t j = 0; j < infos.size(); ++j)
+        {
+            put_string(write_pos_, infos[j].peer_id_);
+            put_string(write_pos_, infos[j].addr_);
+        }
+        put_uint32(write_pos_, __MAGIC_END__);
+        peer_infos_ = infos;
+        return true;
+    }
+
+    std::vector<peer_info> metadata::get_peer_info()
+    {
+        acl::lock_guard lg(locker_);
+        return peer_infos_;
+    }
+
 	bool metadata::open(const std::string &file_path, bool create)
 	{
 		long long size = acl_file_size(file_path.c_str());
@@ -418,7 +519,7 @@ namespace raft
 			return false;
 		}
 
-		//create_new_file mmap
+		//open mmap
 		write_pos_ = buf_ = 
 			static_cast<unsigned char *>(open_mmap(fd, size));
 		

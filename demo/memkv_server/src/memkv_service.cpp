@@ -69,12 +69,14 @@ public:
 	}
 	bool operator()(status_t status, raft::version ver)
 	{
+        acl_pthread_mutex_lock(&mutex_);
 		done_ = true;
 		status_ = status;
 		ver_ = ver;
 		//notify .replicate done or error
 		acl_pthread_cond_signal(&cond_);
-		return true;
+        acl_pthread_mutex_unlock(&mutex_);
+        return true;
 	}
 	//wait for replicate dong or error
 	void wait()
@@ -169,20 +171,29 @@ memkv_service::memkv_service(acl::http_rpc_server &server)
 	apply_callback_ = new memkv_apply_callback(this);
 	node_ = new raft::node;
 	cfg_file_path_ = var_cfg_raft_config;
+    writes_ = 0;
+    last_writes_ = 0;
+    print_status_ = new print_status;
+    print_status_->is_stop_ = false;
+    print_status_->memkv_service_ = this;
+    print_status_->start();
 }
 
 memkv_service::~memkv_service()
 {
+    print_status_->is_stop_ = true;
+    print_status_->wait();
+
 	delete node_;
 	delete load_snapshot_callback_;
 	delete make_snapshot_callback_;
 	delete apply_callback_;
+    delete print_status_;
 }
 
 void memkv_service::init()
 {
 	load_config();
-	init_http_rpc_client();
 	init_raft_node();
 	regist_service();
 
@@ -195,7 +206,7 @@ void memkv_service::load_config()
 	acl::ifstream file;
 	if (!file.open_read(cfg_file_path_.c_str()))
 	{
-		logger_fatal("create_new_file config file error."
+		logger_fatal("open_read config file error."
 			         "cfg_file_path_:%s "
 			         "error:%s",
 			          cfg_file_path_.c_str(),
@@ -214,42 +225,7 @@ void memkv_service::load_config()
 		logger_fatal("gson error.%s", ret.second.c_str());
 	}
 }
-void memkv_service::init_http_rpc_client()
-{
-	acl::http_rpc_client &rpc_client = 
-		acl::http_rpc_client::get_instance();
 
-	std::vector<std::string> paths;
-
-    paths.push_back("raft/vote_req");
-	paths.push_back("raft/replicate_log_req");
-	paths.push_back("raft/install_snapshot_req");
-
-
-	for (size_t i = 0; i < cfg_.peer_addrs.size(); i++)
-	{
-		for (size_t j = 0; j < paths.size(); j++)
-		{
-			acl::string service_path;
-			const char *addr = cfg_.peer_addrs[i].addr.c_str();
-			const char *id = cfg_.peer_addrs[i].id.c_str();
-
-			service_path.format("/memkv%s/%s",
-				               id, 
-				               paths[j].c_str());
-
-			rpc_client.add_service(addr, service_path);
-
-			logger("add service:"
-				   "id:%s"
-				   "addr:%s "
-				   "service_path:%s",
-				   id,
-				   addr,
-				   service_path.c_str());
-		}
-	}
-}
 void memkv_service::init_raft_node()
 {
 	node_ = new raft::node;
@@ -260,12 +236,16 @@ void memkv_service::init_raft_node()
 	node_->set_metadata_path(cfg_.metadata_path);
 	node_->set_snapshot_path(cfg_.snapshot_path);
 
-	std::vector<std::string> peers;
+	std::vector<raft::peer_info> peer_infos;
 	for (size_t i = 0; i < cfg_.peer_addrs.size(); i++)
 	{
-		peers.push_back(cfg_.peer_addrs[i].id);
+        raft::peer_info _peer_info;
+        _peer_info.peer_id_ = cfg_.peer_addrs[i].id;
+        _peer_info.addr_    = cfg_.peer_addrs[i].addr;
+
+        peer_infos.push_back(_peer_info);
 	}
-	node_->set_peers(peers);
+	node_->set_peers(peer_infos);
 
 	//load snapshot 
 	node_->set_load_snapshot_callback(load_snapshot_callback_);
@@ -355,7 +335,7 @@ bool memkv_service::load_snapshot(const std::string &file_path)
 	acl::ifstream file;
 	if (!file.open_read(file_path.c_str()))
 	{
-		logger_error("create_new_file file error");
+		logger_error("open_read file error");
 		return false;
 	}
 	raft::version ver;
@@ -427,7 +407,7 @@ bool memkv_service::make_snapshot(const std::string &path,
 	acl::ofstream file;
 	if (!file.open_trunc(snapshot_path.c_str()))
 	{
-		logger_error("create_new_file file error.%s",
+		logger_error("open_trunc file error.%s",
                      snapshot_path.c_str());
 
 		return false;
@@ -580,11 +560,18 @@ bool memkv_service::set(const set_req &req, set_resp &resp)
 	}
 	// status ok .set key to store
 	acl::lock_guard lg(mem_store_locker_);
-
+    writes_ ++;
 	store_[req.key] = store_[req.value];
 	curr_ver_ = ver;
 
 	return true;
+}
+
+void memkv_service::do_print_status()
+{
+    size_t diff = writes_ - last_writes_;
+    logger("writes/second (%lu)", diff);
+    last_writes_ = writes_;
 }
 bool memkv_service::del(const del_req &req, del_resp &resp)
 {

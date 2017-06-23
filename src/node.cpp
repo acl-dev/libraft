@@ -1,5 +1,4 @@
 #include "raft.hpp"
-#include <algorithm>
 #include <iostream>
 
 #ifndef __10MB__ 
@@ -19,12 +18,35 @@
 
 namespace raft
 {
+
     const static std::string g_magic_string("raft-snapshot-head");
 
-    struct snapshot_head {
-        std::string magic_string_;
+    struct snapshot_head
+    {
+        std::string   magic_string_;
         snapshot_info info_;
     };
+
+    static inline bool write(acl::ofstream &file, const peer_info &info)
+    {
+        return  write(file, info.peer_id_) &&
+                write(file, info.addr_);
+    }
+
+    bool write(acl::ofstream &file, const std::vector<peer_info> &infos_)
+    {
+        write(file, (unsigned int) infos_.size());
+        for (int i = 0; i < infos_.size(); ++i)
+        {
+            if(!write(file, infos_[i]))
+            {
+                logger_error("write peer_info error(%s)",
+                             acl::last_serror());
+                return false;
+            }
+        }
+        return true;
+    }
 
     bool write(acl::ostream &stream, const version &ver)
     {
@@ -73,25 +95,30 @@ namespace raft
     }
 
     node::node()
-        : log_manager_(NULL),
-        election_timeout_(3000),
-        role_(E_FOLLOWER),
-        start_(false),
-        load_snapshot_callback_(NULL),
-        make_snapshot_callback_(NULL),
-        snapshot_info_(NULL),
-        snapshot_tmp_(NULL),
-        last_snapshot_index_(0),
-        last_snapshot_term_(0),
-        max_log_size_(1024 * 1024 * 1024),//1G
-        max_log_count_(5),
-        mini_log_count_(max_log_count_ / 2),
-        max_snapshot_size_(2),
-        election_timer_(*this),
-        log_compaction_worker_(*this),
-        apply_callback_(NULL),
-        apply_log_(*this)
+     : log_manager_(NULL),
+       election_timeout_(3000),
+       role_(E_FOLLOWER),
+       start_(false),
+       log_ok_(false),
+       load_snapshot_callback_(NULL),
+       make_snapshot_callback_(NULL),
+       snapshot_info_(NULL),
+       snapshot_tmp_(NULL),
+       last_snapshot_index_(0),
+       last_snapshot_term_(0),
+       max_log_size_(1024 * 1024 * 1024),//1G
+       max_log_count_(5),
+       mini_log_count_(max_log_count_ / 2),
+       max_snapshot_size_(2),
+       election_timer_(*this),
+       log_compaction_worker_(*this),
+       apply_callback_(NULL),
+       apply_log_(*this),
+       metadata_(NULL)
     {
+        metadata_path_ = "metadata/";
+        log_path_ = "log/";
+        snapshot_path_ = "snapshot_path/";
     }
 
     node::~node()
@@ -215,7 +242,7 @@ namespace raft
     {
         std::string file_path = get_snapshot();
 
-        if (!!file_path.size())
+        if (!file_path.empty())
         {
             version ver;
             acl::ifstream file;
@@ -254,7 +281,7 @@ namespace raft
 
     raft::term_t node::current_term()
     {
-        return metadata_.get_current_term();
+        return metadata_->get_current_term();
     }
     std::string node::leader_id()
     {
@@ -262,18 +289,21 @@ namespace raft
         return leader_id_;
     }
 
-    void node::set_peers(const std::vector<std::string> &peers)
+    void node::set_peers(const std::vector<peer_info> &peer_infos)
     {
-        acl::lock_guard lg(peers_locker_);
+        peer_infos_ = peer_infos;
 
-        for (size_t i = 0; i < peers.size(); ++i)
+    }
+
+    std::vector<peer_info> node::get_peer_infos()
+    {
+        acl::lock_guard lg(metadata_locker_);
+        if(peer_infos_.empty())
         {
-            if (peers_.find(peers[i]) == peers_.end())
-            {
-                peer *_peer = new peer(*this, peers[i]);
-                peers_.insert(std::make_pair(peers[i], _peer));
-            }
+            if(metadata_)
+                return metadata_->get_peer_info();
         }
+        return peer_infos_;
     }
 
     void node::set_make_snapshot_callback(
@@ -289,16 +319,17 @@ namespace raft
             logger("find new leader.%s", leader_id.c_str());
         leader_id_ = leader_id;
     }
+
     void node::set_current_term(term_t term)
     {
         logger_debug(ELECTION_SECTION, 2, "set term to %llu", term);
 
-        if (metadata_.get_current_term() < term)
+        if (metadata_->get_current_term() < term)
         {
             /*new term. has a vote to election who is leader*/
-            if (!metadata_.set_vote_for("", term))
+            if (!metadata_->set_vote_for("", term))
                 logger_fatal("metadata set_vote_for error");
-            if (!metadata_.set_current_term(term))
+            if (!metadata_->set_current_term(term))
                 logger_fatal("metadata set_vote_for error");
         }
     }
@@ -322,12 +353,22 @@ namespace raft
 
     void node::set_vote_for(const std::string& vote_for)
     {
-        metadata_.set_vote_for(vote_for, current_term());
+        metadata_->set_vote_for(vote_for, current_term());
     }
 
+    bool node::log_ok()
+    {
+        return log_ok_;
+    }
+
+    void node::set_log_ok(bool ok)
+    {
+        acl::lock_guard lg(metadata_locker_);
+        log_ok_ = ok;
+    }
     std::string node::vote_for()
     {
-        return  metadata_.get_vote_for().second;
+        return  metadata_->get_vote_for().second;
     }
 
     void node::set_role(int _role)
@@ -342,7 +383,7 @@ namespace raft
 
     log_index_t node::applied_index()
     {
-        return metadata_.get_applied_index();
+        return metadata_->get_applied_index();
     }
 
     void node::set_applied_index(log_index_t index)
@@ -352,17 +393,17 @@ namespace raft
             /**
              * apply should increase one by one
              */
-            if (metadata_.get_applied_index() != index - 1)
+            if (metadata_->get_applied_index() != index - 1)
             {
                 logger_fatal("applied error."
                              "applied_index(%llu) "
                              "index(%llu)",
-                             metadata_.get_applied_index(),
+                             metadata_->get_applied_index(),
                              index);
             }
         }
 
-        if (!metadata_.set_applied_index(index))
+        if (!metadata_->set_applied_index(index))
             logger_fatal("metadata set_applied_index");
     }
     raft::term_t node::last_log_term()const
@@ -554,6 +595,8 @@ namespace raft
                      current_term(),
                      response.log_ok(),
                      response.vote_granted());
+
+        set_log_ok(response.log_ok());
 
         if (response.term() < current_term())
         {
@@ -783,8 +826,10 @@ namespace raft
     {
         logger_debug(NODE_SECTION, 10,
                      "----do compacting log start ---------");
+        std::string snapshot;
+
     do_again:
-        std::string snapshot = get_snapshot();
+        snapshot = get_snapshot();
         if (snapshot.empty())
         {
             logger_debug(NODE_SECTION, 10,
@@ -807,7 +852,7 @@ namespace raft
         acl::ifstream	file;
         if (!file.open_read(snapshot.c_str()))
         {
-            logger_fatal("create_new_file file,error,%s",
+            logger_fatal("open file,error,%s",
                          snapshot.c_str());
             return;
         }
@@ -861,7 +906,7 @@ namespace raft
         logger_debug(NODE_SECTION, 10,
                      "set committed to %llu", index);
 
-        if (!metadata_.set_committed_index(index))
+        if (!metadata_->set_committed_index(index))
             logger_fatal("metadata set_committed_index error");
     }
 
@@ -888,36 +933,46 @@ namespace raft
     void node::election_timer_callback()
     {
 
-        //logger("election timer callback");
-        /*
+        ///logger("election timer callback");
+        /**
          * this node lost heartbeat from leader
          * and it has not leader now.so this node
          * should elect to be new leader
          */
         set_leader_id("");
 
-        set_current_term(current_term() + 1);
+        /**
+         * if log not ok. don't increase term.
+         */
+        if(log_ok())
+        {
+            set_current_term(current_term() + 1);
+        }
+
 
         clear_vote_response();
 
         set_role(E_CANDIDATE);
 
 
-        /*Rule For Followers:
-        * If election timeout elapses without receiving AppendEntries
-        * RPC from current leader or granting vote to candidate:
-        * convert to candidate
-        */
+        /**
+         * Rule For Followers:
+         * If election timeout elapses without receiving AppendEntries
+         * RPC from current leader or granting vote to candidate:
+         * convert to candidate
+         */
         if (vote_for().size() && vote_for() != node_id())
         {
             set_election_timer();
             std::string vote = vote_for().c_str();
-            logger("vote_for(%s) is not empty. return",
-                   vote.c_str());
+            logger("vote_for(%s) is not empty. return", vote.c_str());
+
+            ///Give a chance to communicate to each other
+            set_current_term(current_term() + 1);
             return;
         }
 
-        /*
+        /**
         * : conversion to candidate, start election:
         * : Increment currentTerm
         * : Vote for self
@@ -935,7 +990,7 @@ namespace raft
 
     raft::log_index_t node::committed_index()
     {
-        return metadata_.get_committed_index();
+        return metadata_->get_committed_index();
     }
 
     raft::log_index_t node::start_log_index()const
@@ -1233,8 +1288,17 @@ namespace raft
 
         resp.set_success(true);
 
-        bool sync_log = true;
 
+        /**
+         *check log ok
+         * if log not ok.it is not necessary to election.
+         * if to election with log not ok.this node can't
+         * grant a vote.
+         */
+
+        set_log_ok(last_log_index() >= req.leader_commit());
+
+        bool sync_log = true;
         for (int i = 0; i < req.entries_size(); i++)
         {
             const log_entry &entry = req.entries(i);
@@ -1322,7 +1386,7 @@ namespace raft
 
             if (!snapshot_tmp_->open_trunc(file_path))
             {
-                logger_error("create_new_file filename error,"
+                logger_error("open_trunc filename error,"
                              "file_path:%s,%s",
                              file_path.c_str(),
                              acl::last_serror());
@@ -1484,37 +1548,45 @@ namespace raft
          */
         remove_old_snapshot();
     }
-    void node::reload()
+    bool node::reload()
     {
         if (log_manager_)
         {
-            logger_error("reload repeat error");
-            return;
+            logger_warn("reload repeat");
+            return true;
         }
         log_manager_ = new mmap_log_manager(log_path_);
         log_manager_->set_log_size(max_log_size_);
         log_manager_->reload_logs();
 
-        if (!metadata_.reload(metadata_path_))
+        acl_assert(!metadata_);
+
+        metadata_ = new metadata();
+        if (!metadata_->reload(metadata_path_))
         {
-            logger_fatal("load metadata error.path(%s)",
+            logger_error("load metadata error.path(%s)",
                          metadata_path_.c_str());
+            return false;
         }
-        metadata_.print_status();
+        if(peer_infos_.empty())
+            peer_infos_ = metadata_->get_peer_info();
+
+        metadata_->print_status();
+
+        return true;
     }
     void node::start()
     {
-        for (std::map<std::string, peer*>::iterator it =
-             peers_.begin(); it != peers_.end(); ++it)
-        {
-            it->second->set_match_index(last_log_index());
-            it->second->set_next_index(last_log_index());
-            it->second->start();
-        }
+        init_peers();
+
+        apply_log_.start();
+
+        log_compaction_worker_.start();
 
         set_election_timer();
-        apply_log_.start();
-        log_compaction_worker_.start();
+
+        if(!peer_infos_.empty())
+            metadata_->set_peer_infos(peer_infos_);
     }
 
     bool node::handle_install_snapshot_request(
@@ -1620,6 +1692,30 @@ namespace raft
         return true;
     }
 
+    void node::init_peers()
+    {
+        acl::lock_guard lg(peers_locker_);
+
+        for (size_t i = 0; i < peer_infos_.size(); ++i)
+        {
+            if (peers_.find(peer_infos_[i].peer_id_) == peers_.end())
+            {
+                peer *_peer = new peer(*this,
+                                       peer_infos_[i].peer_id_,
+                                       peer_infos_[i].addr_);
+
+                peers_.insert(std::make_pair(peer_infos_[i].peer_id_, _peer));
+            }
+        }
+
+        for (std::map<std::string, peer*>::iterator
+                     it = peers_.begin(); it != peers_.end(); ++it)
+        {
+            it->second->set_match_index(last_log_index());
+            it->second->set_next_index(last_log_index());
+            it->second->start();
+        }
+    }
     void node::add_replicate_callback(const version& version,
                                       replicate_callback* callback)
     {
@@ -1794,9 +1890,9 @@ namespace raft
 
             acl_assert(!acl_pthread_mutex_lock(&mutex_));
             int status = acl_pthread_cond_timedwait(
-                &cond_,
-                &mutex_,
-                &timeout);
+                    &cond_,
+                    &mutex_,
+                    &timeout);
 
             if (cancel_ || status != ACL_ETIMEDOUT)
             {

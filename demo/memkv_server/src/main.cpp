@@ -17,7 +17,7 @@ int main(int argc, char *argv[])
 
     const char* logfile = "test.log";
     const char* pro_name = "memkv";
-    const char* cfg = "1:100; 10:100; 11:100";
+    const char* cfg = "1:5; 10:5; 11:5";
 
     // 在程序初始化时打开日志
     logger_open(logfile, pro_name, cfg);
