@@ -454,8 +454,6 @@ namespace raft
 		 */
 		bool should_compact_log();
 		
-		bool check_compacting_log();
-
 		void async_compaction_log();
 
         void remove_old_snapshot()const;
