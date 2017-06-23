@@ -52,7 +52,7 @@ namespace raft
 			acl::string file_path(path_.c_str());
 
 			file_path.format_append("%llu%s",
-                                    last_index_ + 1,
+									last_index_ + 1,
                                     __LOG_EXT__);
 
 			last_log_ = create(file_path.c_str());
@@ -129,11 +129,11 @@ namespace raft
 		do
 		{
 			if ( max_bytes <= 0 ||
-                    max_count <= 0 ||
-                    begin > last_index())
-            {
-                break;
-            }
+               max_count <= 0 ||
+               begin > last_index())
+			{
+                		break;
+			}
 
 			log *log_ = find_log(begin);
 			if (!log_)
@@ -147,10 +147,10 @@ namespace raft
 				bytes))
 			{
 				logger("read log error. "
-                       "last_log_index(%llu),"
-                       "index(%llu)",
-                       last_index(),
-                       begin);
+				       "last_log_index(%llu),"
+				       "index(%llu)",
+				       last_index(),
+				       begin);
 
 				log_->dec_ref();
 				break;
@@ -200,9 +200,7 @@ namespace raft
 		acl::lock_guard lg(locker_);
 
 		std::map<log_index_t, log_index_t> infos;
-
-        std::map<log_index_t, log*>::iterator it
-                = logs_.begin();
+        std::map<log_index_t, log*>::iterator it = logs_.begin();
 
 		for (; it != logs_.end(); ++it)
 		{
@@ -230,7 +228,7 @@ namespace raft
 				logs_.erase(it++);
 				del_count_++;
 				logger("log_manager discard log( %s )",
-                       file_path.c_str());
+				       file_path.c_str());
 			}
 			else
 				break;
@@ -266,8 +264,7 @@ namespace raft
 			return last_log_;
 		}
 
-		std::map<log_index_t, log*>::reverse_iterator it
-                = logs_.rbegin();
+		std::map<log_index_t, log*>::reverse_iterator it = logs_.rbegin();
 
 		for (; it != logs_.rend(); ++it)
 		{
